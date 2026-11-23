@@ -990,6 +990,8 @@
 .marketplace-admin-table td > img { width: 39px; height: 39px; border-radius: 7px; object-fit: cover; vertical-align: middle; }
 .marketplace-admin-table td a { display: block; color: #647a45; font-size: 9px; text-decoration: none; }
 .marketplace-admin-table td a:hover { color: #394d3a; text-decoration: underline; }
+.marketplace-product-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.marketplace-product-actions button:disabled { opacity: .55; cursor: wait; }
 .customer-crm-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .customer-crm-stats article { min-height: 82px; padding: 13px 15px; border: 1px solid #e8ebdf; border-radius: 10px; background: #fff; display: grid; grid-template-columns: 23px 1fr; align-content: center; align-items: center; gap: 3px 8px; }
 .customer-crm-stats svg { grid-row: span 2; color: #84994e; }

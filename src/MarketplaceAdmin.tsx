@@ -13,6 +13,7 @@ import {
   ReceiptText,
   Search,
   ShoppingBag,
+  Trash2,
   TrendingDown,
   TrendingUp,
   Users,
@@ -270,6 +271,7 @@ export default function MarketplaceAdmin({
   const [summary, setSummary] = useState<MarketplaceSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingKitId, setDeletingKitId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [kitForm, setKitForm] = useState<KitForm>(emptyKitForm);
@@ -582,6 +584,53 @@ export default function MarketplaceAdmin({
     }
     setNotice(kit.is_active ? "Kit ocultado da loja." : "Kit publicado na loja.");
     await loadData();
+  }
+
+  async function deleteKit(kit: AdminKit) {
+    if (!supabase || deletingKitId) return;
+    if (
+      !window.confirm(
+        `Excluir "${kit.name}" permanentemente? O item sairá da loja, mas os dados dos pedidos anteriores serão preservados. Esta ação não pode ser desfeita.`,
+      )
+    ) {
+      return;
+    }
+
+    setDeletingKitId(kit.id);
+    setError("");
+    setNotice("");
+    const { data, error: deleteError } = await supabase
+      .from("marketplace_kits")
+      .delete()
+      .eq("id", kit.id)
+      .select("id")
+      .maybeSingle();
+    if (deleteError) {
+      setError(`Não foi possível excluir o produto: ${deleteError.message}`);
+      setDeletingKitId(null);
+      return;
+    }
+    if (!data) {
+      await loadData();
+      setError("Este produto não foi encontrado ou já foi excluído.");
+      setDeletingKitId(null);
+      return;
+    }
+
+    const imagePath = kit.image_url?.split("/storage/v1/object/public/kit-images/")[1];
+    let imageCleanupNotice = "";
+    if (imagePath) {
+      const { error: imageError } = await supabase.storage
+        .from("kit-images")
+        .remove([imagePath]);
+      if (imageError) {
+        imageCleanupNotice = ` Não foi possível remover a foto: ${imageError.message}`;
+      }
+    }
+
+    setNotice(`"${kit.name}" foi excluído. O histórico dos pedidos foi preservado.${imageCleanupNotice}`);
+    await loadData();
+    setDeletingKitId(null);
   }
 
   async function updateOrderStatus(order: MarketplaceOrder, status: MarketplaceOrder["status"]) {
@@ -961,8 +1010,20 @@ export default function MarketplaceAdmin({
                           <td>{kit.display_order}</td>
                           <td>{kit.is_active ? "Publicado" : "Oculto"}</td>
                           <td>
-                            <button className="icon-button" type="button" onClick={() => editKit(kit)} aria-label={`Editar ${kit.name}`}><Pencil size={14} /></button>
-                            <button className="admin-secondary-button" type="button" onClick={() => void toggleKit(kit)}>{kit.is_active ? "Ocultar" : "Publicar"}</button>
+                            <div className="marketplace-product-actions">
+                              <button className="icon-button" type="button" onClick={() => editKit(kit)} aria-label={`Editar ${kit.name}`} disabled={deletingKitId === kit.id}><Pencil size={14} /></button>
+                              <button className="admin-secondary-button" type="button" onClick={() => void toggleKit(kit)} disabled={deletingKitId === kit.id}>{kit.is_active ? "Ocultar" : "Publicar"}</button>
+                              <button
+                                className="icon-button icon-button-danger"
+                                type="button"
+                                onClick={() => void deleteKit(kit)}
+                                aria-label={`Excluir ${kit.name}`}
+                                title={`Excluir ${kit.name}`}
+                                disabled={deletingKitId !== null}
+                              >
+                                {deletingKitId === kit.id ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}

@@ -41,8 +41,10 @@ campanhas de sorteio.
    exceeded`; após esse erro, aguarde o limite ser liberado antes de tentar
    novamente. Não desative a confirmação de e-mail só para contornar o limite.
 
-O painel não controla estoque. Cadastre kits prontos ou produtos avulsos com
-descrição, unidade, preço e foto na aba **Loja Kit Feira**. O checkout registra
+O painel não controla estoque. Na aba **Loja Kit Feira**, cadastre, consulte,
+edite, publique/oculte ou exclua kits prontos e produtos avulsos com descrição,
+unidade, preço e foto. Ao excluir um item, os dados dos pedidos anteriores são
+preservados. O checkout registra
 o pedido e os itens com os preços confirmados pelo banco antes de oferecer a
 confirmação pelo WhatsApp `11 97077-3006`; o status inicial fica como aguardando confirmação.
 Produtos vendidos por kg aceitam quantidades de meio em meio quilo. Clientes
