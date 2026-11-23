@@ -226,6 +226,7 @@ create policy "Admins can manage draw results"
 
 grant select on public.raffles to anon, authenticated;
 grant insert, update on public.raffles to authenticated;
+grant delete on public.raffles to authenticated;
 grant insert on public.registrations to anon, authenticated;
 grant select on public.registrations to authenticated;
 grant select on public.draw_results to anon;
@@ -289,9 +290,6 @@ begin
   if not found then
     raise exception using errcode = 'P0002', message = 'Raffle not found';
   end if;
-  if now() < raffle_row.draw_at then
-    raise exception using errcode = 'P0001', message = 'The scheduled draw time has not arrived';
-  end if;
   if exists (select 1 from public.draw_results where raffle_id = p_raffle_id) then
     raise exception using errcode = '23505', message = 'This raffle already has a result';
   end if;
@@ -309,6 +307,10 @@ begin
   insert into public.draw_results (raffle_id, winner_name, prize)
   values (p_raffle_id, winner_row.full_name, raffle_row.prize)
   returning * into result_row;
+
+  update public.raffles
+  set is_active = false, status = 'finished'
+  where id = p_raffle_id;
 
   return query
     select result_row.id, result_row.winner_name, result_row.prize, result_row.drawn_at;

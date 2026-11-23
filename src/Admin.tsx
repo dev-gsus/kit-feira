@@ -20,6 +20,7 @@ import {
   Search,
   ShieldCheck,
   ShoppingBag,
+  Trash2,
   Trophy,
   Users,
   X,
@@ -194,6 +195,7 @@ function AdminApp() {
   const [selectedKitPreset, setSelectedKitPreset] = useState("");
   const [savingRaffle, setSavingRaffle] = useState(false);
   const [drawing, setDrawing] = useState(false);
+  const [deletingRaffleId, setDeletingRaffleId] = useState<string | null>(null);
 
   const selectedRaffle = useMemo(
     () => raffles.find((raffle) => raffle.id === selectedRaffleId) ?? null,
@@ -567,6 +569,65 @@ function AdminApp() {
     await loadAdminData();
   }
 
+  async function deleteRaffle(raffle: AdminRaffle) {
+    if (!supabase) return;
+    const registrationTotal = registrationCounts[raffle.id] ?? 0;
+    const hasResult = drawResults.some((result) => result.raffle_id === raffle.id);
+    const relatedData = [
+      ...(registrationTotal > 0
+        ? [`${registrationTotal} ${registrationTotal === 1 ? "inscrição" : "inscrições"}`]
+        : []),
+      ...(hasResult ? ["o resultado do sorteio"] : []),
+    ];
+    if (
+      !window.confirm(
+        `Excluir "${raffle.title}" permanentemente?${relatedData.length ? ` Também serão apagados ${relatedData.join(" e ")}.` : ""} Esta ação não pode ser desfeita.`,
+      )
+    ) {
+      return;
+    }
+
+    setDeletingRaffleId(raffle.id);
+    setNotice("");
+    const { data, error } = await supabase
+      .from("raffles")
+      .delete()
+      .eq("id", raffle.id)
+      .select("id")
+      .maybeSingle();
+    if (error) {
+      setNotice(`Não foi possível excluir o sorteio: ${error.message}`);
+      setDeletingRaffleId(null);
+      return;
+    }
+    if (!data) {
+      setNotice("Este sorteio não foi encontrado ou já foi excluído.");
+      setDeletingRaffleId(null);
+      await loadAdminData();
+      return;
+    }
+
+    const imagePath = raffle.photo_url?.split("/storage/v1/object/public/raffle-images/")[1];
+    let imageCleanupNotice = "";
+    if (imagePath) {
+      const { error: imageError } = await supabase.storage
+        .from("raffle-images")
+        .remove([imagePath]);
+      if (imageError) {
+        imageCleanupNotice = ` Não foi possível remover a foto: ${imageError.message}`;
+      }
+    }
+
+    if (editingRaffleId === raffle.id) {
+      setEditingRaffleId(null);
+      setRaffleForm(emptyRaffleForm());
+      setSelectedImage(null);
+    }
+    setNotice(`Sorteio "${raffle.title}" excluído.${imageCleanupNotice}`);
+    setDeletingRaffleId(null);
+    await loadAdminData();
+  }
+
   async function exportRegistrations() {
     if (!supabase || !selectedRaffleId) return;
     setExporting(true);
@@ -618,6 +679,20 @@ function AdminApp() {
 
   async function handleDraw() {
     if (!supabase || !selectedRaffleId) return;
+    if (!selectedRaffle) return;
+    const participantCount = registrationCounts[selectedRaffleId] ?? 0;
+    if (participantCount === 0) {
+      setNotice("Não há participantes inscritos para realizar este sorteio.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Realizar o sorteio de "${selectedRaffle.title}" agora? As inscrições serão encerradas e não será possível incluir novos participantes.`,
+      )
+    ) {
+      return;
+    }
+
     setDrawing(true);
     setNotice("");
     const { error } = await supabase.rpc("perform_draw", {
@@ -893,8 +968,22 @@ function AdminApp() {
                   {raffle.photo_url ? <img src={raffle.photo_url} alt="" /> : <span className="raffle-placeholder"><Gift size={20} /></span>}
                   <div className="raffle-admin-info"><h3>{raffle.title}</h3><span>{raffle.prize} · {registrationCounts[raffle.id] ?? 0}{raffle.max_participants === null ? " inscritos · sem limite" : ` de ${raffle.max_participants} inscritos`} · Sorteio {displayDate(raffle.draw_at)}</span></div>
                   <span className={getRaffleStatus(raffle) === "active" ? "raffle-state open" : "raffle-state"}><i />{raffleStatusLabel(getRaffleStatus(raffle))}</span>
-                  {getRaffleStatus(raffle) !== "finished" && <button className="finish-raffle-button" type="button" onClick={() => void finishRaffle(raffle)}>Finalizar</button>}
-                  <button className="icon-button" type="button" onClick={() => editRaffle(raffle)} aria-label={`Editar ${raffle.title}`}><Pencil size={16} /></button>
+                  <div className="raffle-row-actions">
+                    {getRaffleStatus(raffle) !== "finished" && <button className="finish-raffle-button" type="button" onClick={() => void finishRaffle(raffle)}>Finalizar</button>}
+                    <button className="icon-button" type="button" onClick={() => editRaffle(raffle)} aria-label={`Editar ${raffle.title}`}><Pencil size={16} /></button>
+                    <button
+                      className="icon-button icon-button-danger"
+                      type="button"
+                      onClick={() => void deleteRaffle(raffle)}
+                      disabled={deletingRaffleId === raffle.id}
+                      aria-label={`Excluir ${raffle.title}`}
+                      title="Excluir sorteio"
+                    >
+                      {deletingRaffleId === raffle.id
+                        ? <LoaderCircle className="spin" size={16} />
+                        : <Trash2 size={16} />}
+                    </button>
+                  </div>
                 </article>
               ))}</div> : <div className="admin-empty raffle-filter-empty"><span>{raffleFilter === "active" ? <Gift size={22} /> : raffleFilter === "finished" ? <Trophy size={22} /> : <CalendarDays size={22} />}</span><h3>{raffleFilter === "active" ? "Nenhum sorteio ativo." : raffleFilter === "finished" ? "Nenhum sorteio finalizado." : "Nenhum sorteio pausado."}</h3><p>{raffleFilter === "active" ? "Ative um sorteio existente ou crie uma nova campanha para exibi-la no site." : "Quando houver sorteios nesta categoria, eles aparecerão aqui."}</p>{raffleFilter === "active" && <button className="button button-lime" onClick={startNewRaffle}><Plus size={17} /> Criar sorteio</button>}</div>}
             </section>
@@ -968,11 +1057,11 @@ function AdminApp() {
                       </div>
                     ) : (
                       <div className="draw-action">
-                        <p>O sorteio só pode ser realizado após a data definida. O resultado será salvo e ficará oculto até você publicá-lo.</p>
-                        <button className="button button-dark" type="button" onClick={() => void handleDraw()} disabled={drawing || new Date(selectedRaffle.draw_at) > new Date()}>
+                        <p>Você pode sortear antes da data prevista. Ao realizar, as inscrições serão encerradas e o resultado ficará oculto até você publicá-lo.</p>
+                        <button className="button button-dark" type="button" onClick={() => void handleDraw()} disabled={drawing || (registrationCounts[selectedRaffle.id] ?? 0) === 0}>
                           {drawing ? <><LoaderCircle className="spin" size={17} /> Sorteando...</> : <>Sortear participante <Trophy size={17} /></>}
                         </button>
-                        {new Date(selectedRaffle.draw_at) > new Date() && <small>Disponível em {displayDate(selectedRaffle.draw_at)}</small>}
+                        {(registrationCounts[selectedRaffle.id] ?? 0) === 0 && <small>É preciso ter ao menos um participante inscrito.</small>}
                       </div>
                     )}
 

@@ -17,7 +17,10 @@ campanhas de sorteio.
    [`supabase/migrations/20261123_marketplace_announcements.sql`](./supabase/migrations/20261123_marketplace_announcements.sql)
    para habilitar os recados de preço gerenciados pelo painel. A instalação nova
    já inclui essa tabela em `supabase/schema.sql`.
-4. Em **Authentication → Users**, cadastre ou confirme as contas que poderão
+4. Aplique
+   [`supabase/migrations/20261123_admin_raffle_controls.sql`](./supabase/migrations/20261123_admin_raffle_controls.sql)
+   para permitir excluir sorteios e realizar sorteios antes da data agendada.
+5. Em **Authentication → Users**, cadastre ou confirme as contas que poderão
    administrar o painel. A autorização administrativa é mantida separadamente
    em `admin_users`; novos clientes não são adicionados a essa tabela:
 
