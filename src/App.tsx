@@ -10,6 +10,7 @@ import {
   MapPin,
   Menu,
   MessageCircle,
+  Phone,
   ShoppingBag,
   ShieldCheck,
   Sparkles,
@@ -645,7 +646,10 @@ function PublicSite() {
       rel="noreferrer"
       aria-label="Fale com o Kit Feira pelo WhatsApp"
     >
-      <MessageCircle size={25} aria-hidden="true" />
+      <span className="whatsapp-brand-icon" aria-hidden="true">
+        <MessageCircle size={28} />
+        <Phone className="whatsapp-phone-icon" size={12} />
+      </span>
       <span>Fale com a gente</span>
     </a>
     </>

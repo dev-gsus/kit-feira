@@ -360,6 +360,9 @@ body { background: var(--paper); }
   border-radius: inherit;
   animation: whatsapp-pulse 2.2s ease-out infinite;
 }
+.whatsapp-brand-icon { position: relative; width: 28px; height: 28px; display: grid; place-items: center; }
+.whatsapp-brand-icon > svg:first-child { position: absolute; inset: 0; }
+.whatsapp-brand-icon .whatsapp-phone-icon { position: absolute; top: 8px; left: 8px; transform: rotate(-15deg); stroke-width: 2.8; }
 .whatsapp-float:hover {
   transform: translateY(-4px) scale(1.04);
   background: #d94314;
