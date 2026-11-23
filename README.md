@@ -13,7 +13,11 @@ campanhas de sorteio.
 2. Em todas as instalações, aplique uma vez
    [`supabase/migrations/20261123_customer_accounts_crm.sql`](./supabase/migrations/20261123_customer_accounts_crm.sql).
    Ela cria contas de clientes, endereços salvos, histórico de pedidos e acesso ao CRM.
-3. Em **Authentication → Users**, cadastre ou confirme as contas que poderão
+3. Aplique também uma vez
+   [`supabase/migrations/20261123_marketplace_announcements.sql`](./supabase/migrations/20261123_marketplace_announcements.sql)
+   para habilitar os recados de preço gerenciados pelo painel. A instalação nova
+   já inclui essa tabela em `supabase/schema.sql`.
+4. Em **Authentication → Users**, cadastre ou confirme as contas que poderão
    administrar o painel. A autorização administrativa é mantida separadamente
    em `admin_users`; novos clientes não são adicionados a essa tabela:
 
@@ -22,22 +26,30 @@ campanhas de sorteio.
    values ('UUID_DO_USUARIO_ADMIN');
    ```
 
-4. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no `.env.local`.
+5. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no `.env.local`.
    A chave publishable/anon é usada no navegador; nunca coloque uma chave
    `service_role` no site.
 5. Em **Authentication → URL Configuration**, configure a URL local e adicione
    `https://kit-feira.vercel.app/conta` à lista de URLs de redirecionamento
    permitidas para a confirmação de cadastro.
+6. Para envios reais de confirmação de cadastro, configure um servidor SMTP
+   próprio em **Authentication → SMTP Settings**. O serviço de e-mail padrão
+   do Supabase tem limite baixo para testes e pode retornar `email rate limit
+   exceeded`; após esse erro, aguarde o limite ser liberado antes de tentar
+   novamente. Não desative a confirmação de e-mail só para contornar o limite.
 
 O painel não controla estoque. Cadastre kits prontos ou produtos avulsos com
 descrição, unidade, preço e foto na aba **Loja Kit Feira**. O checkout registra
-o pedido e os itens com os preços confirmados pelo banco antes de abrir o
-WhatsApp `11 97077-3006`; o status inicial fica como aguardando confirmação.
+o pedido e os itens com os preços confirmados pelo banco antes de oferecer a
+confirmação pelo WhatsApp `11 97077-3006`; o status inicial fica como aguardando confirmação.
 Produtos vendidos por kg aceitam quantidades de meio em meio quilo. Clientes
 podem comprar sem conta; quando entram, seus novos pedidos e endereços ficam
 salvos na própria área `/conta`. Contas de clientes veem apenas os próprios
 dados e pedidos; o CRM e os dados de todos os pedidos permanecem restritos aos
 administradores autorizados.
+O CEP busca rua, bairro e cidade para o checkout e os endereços da conta. Na
+aba **Recados da feira**, administradores publicam e ocultam chamadas de preço
+que aparecem animadas na loja.
 
 Na aba **Custos de compra**, registre cada compra de fruta ou insumo com
 quantidade, unidade e total pago. O painel compara o preço por unidade com a

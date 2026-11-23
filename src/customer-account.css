@@ -178,6 +178,9 @@
 .customer-address-form { margin: 0 0 18px; padding: 15px; border: 1px solid #e8ebdf; border-radius: 11px; background: #fbfcf8; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
 .customer-address-form label.wide { grid-column: 1 / -1; }
 .customer-address-form input { height: 38px; font-size: 10px; }
+.customer-cep-feedback { grid-column: 1 / -1; margin: -5px 0 0; color: #6f7e55; font-size: 9px; line-height: 1.5; }
+.customer-cep-feedback.error { color: #9b4e3b; }
+.customer-cep-feedback.loading { color: #848a79; }
 .customer-form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
 .customer-form-actions button { min-height: 35px; }
 .customer-cancel-button { padding: 0 12px; border: 1px solid #e4e6dd; border-radius: 8px; background: white; color: #747a6d; font: 700 9px "DM Sans", sans-serif; cursor: pointer; }

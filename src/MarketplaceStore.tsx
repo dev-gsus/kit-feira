@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   LoaderCircle,
+  Megaphone,
   MapPin,
   Minus,
   Plus,
@@ -12,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { createPortal } from "react-dom";
+import { lookupCep } from "./lib/cep";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import "./marketplace.css";
 
@@ -39,6 +41,13 @@ type CartItem = {
   quantity: number;
 };
 
+type MarketplaceAnnouncement = {
+  id: string;
+  message: string;
+  price: number | null;
+  unit: string;
+};
+
 type CheckoutForm = {
   customerName: string;
   phone: string;
@@ -63,6 +72,12 @@ type CreatedOrder = {
   order_id: string;
   total: number;
   items: OrderSnapshot[];
+};
+
+type CheckoutConfirmation = {
+  whatsappUrl: string;
+  orderNumber: string;
+  customerName: string;
 };
 
 function isCreatedOrder(value: unknown): value is CreatedOrder {
@@ -102,6 +117,13 @@ function normalizeSearchText(value: string) {
 
 function unitLabel(product: MarketplaceKit) {
   return product.product_type === "kit" ? "kit" : product.sale_unit;
+}
+
+function quantityStep(product: MarketplaceKit) {
+  return product.product_type === "loose" &&
+    ["kg", "quilo"].includes(product.sale_unit.toLocaleLowerCase("pt-BR"))
+    ? 0.5
+    : 1;
 }
 
 function digits(value: string) {
@@ -175,9 +197,19 @@ export default function MarketplaceStore() {
   const [loadError, setLoadError] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [directPurchase, setDirectPurchase] = useState<{ product: MarketplaceKit; quantity: number } | null>(null);
+  const [checkoutConfirmation, setCheckoutConfirmation] = useState<CheckoutConfirmation | null>(null);
   const [checkoutForm, setCheckoutForm] = useState<CheckoutForm>(initialCheckoutForm);
   const [checkoutError, setCheckoutError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [customerGreetingName, setCustomerGreetingName] = useState("");
+  const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({});
+  const [cartFeedback, setCartFeedback] = useState("");
+  const [cartPulse, setCartPulse] = useState(false);
+  const [announcements, setAnnouncements] = useState<MarketplaceAnnouncement[]>([]);
+  const [announcementError, setAnnouncementError] = useState("");
+  const [announcementIndex, setAnnouncementIndex] = useState(0);
+  const [checkoutCepFeedback, setCheckoutCepFeedback] = useState<{ type: "loading" | "success" | "error"; message: string } | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<"all" | "kits" | "loose">("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [isCartFloating, setIsCartFloating] = useState(false);
@@ -185,7 +217,10 @@ export default function MarketplaceStore() {
   const cartAnchorRef = useRef<HTMLDivElement>(null);
   const floatingCartRef = useRef<HTMLButtonElement>(null);
   const checkoutDialogRef = useRef<HTMLElement>(null);
+  const directPurchaseDialogRef = useRef<HTMLElement>(null);
   const isSubmittingRef = useRef(false);
+  const checkoutCepRequest = useRef(0);
+  const cartFeedbackTimer = useRef<number | null>(null);
   isSubmittingRef.current = submitting;
 
   useEffect(() => {
@@ -229,6 +264,37 @@ export default function MarketplaceStore() {
     const client = supabase;
     let active = true;
 
+    async function loadAnnouncements() {
+      const { data, error } = await client
+        .from("marketplace_announcements")
+        .select("id, message, price, unit")
+        .eq("is_active", true)
+        .order("created_at", { ascending: false })
+        .limit(12);
+
+      if (!active) return;
+      if (error) {
+        setAnnouncementError(
+          ["PGRST202", "PGRST204", "PGRST205"].includes(error.code ?? "")
+            ? "Novidades e ofertas da feira estão sendo preparadas. Em breve por aqui!"
+            : "Não foi possível carregar os recados da feira agora.",
+        );
+        return;
+      }
+      setAnnouncements((data ?? []) as MarketplaceAnnouncement[]);
+    }
+
+    void loadAnnouncements();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const client = supabase;
+    let active = true;
+
     async function loadCustomerDefaults() {
       const { data: sessionData, error: sessionError } = await client.auth.getSession();
       if (!active) return;
@@ -239,6 +305,8 @@ export default function MarketplaceStore() {
       if (!sessionData.session) return;
 
       const userId = sessionData.session.user.id;
+      const metadataName = String(sessionData.session.user.user_metadata.full_name ?? "");
+      setCustomerGreetingName(metadataName);
       const [profileResult, addressResult] = await Promise.all([
         client
           .from("customer_profiles")
@@ -264,9 +332,10 @@ export default function MarketplaceStore() {
 
       const profile = profileResult.data;
       const address = addressResult.data;
+      setCustomerGreetingName(profile?.full_name || metadataName);
       setCheckoutForm((current) => ({
         ...current,
-        customerName: current.customerName || profile?.full_name || String(sessionData.session.user.user_metadata.full_name ?? ""),
+        customerName: current.customerName || profile?.full_name || metadataName,
         phone: current.phone || formatPhone(profile?.phone ?? String(sessionData.session.user.user_metadata.phone ?? "")),
         address: current.address || address?.delivery_address || "",
         addressNumber: current.addressNumber || address?.address_number || "",
@@ -284,15 +353,21 @@ export default function MarketplaceStore() {
   }, []);
 
   useEffect(() => {
-    if (!checkoutOpen) return;
+    if (!checkoutOpen && !directPurchase) return;
     const previousOverflow = document.body.style.overflow;
     const previousFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
     document.body.style.overflow = "hidden";
-    const focusFrame = window.requestAnimationFrame(() => checkoutDialogRef.current?.focus());
+    const activeDialog = directPurchase
+      ? directPurchaseDialogRef.current
+      : checkoutDialogRef.current;
+    const focusFrame = window.requestAnimationFrame(() => activeDialog?.focus());
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !isSubmittingRef.current) setCheckoutOpen(false);
+      if (event.key === "Escape" && !isSubmittingRef.current) {
+        setCheckoutOpen(false);
+        setDirectPurchase(null);
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => {
@@ -301,7 +376,19 @@ export default function MarketplaceStore() {
       window.removeEventListener("keydown", handleKeyDown);
       if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
-  }, [checkoutOpen]);
+  }, [checkoutOpen, directPurchase]);
+
+  useEffect(() => {
+    if (announcements.length < 2) return;
+    const timer = window.setInterval(() => {
+      setAnnouncementIndex((current) => (current + 1) % announcements.length);
+    }, 5600);
+    return () => window.clearInterval(timer);
+  }, [announcements.length]);
+
+  useEffect(() => () => {
+    if (cartFeedbackTimer.current !== null) window.clearTimeout(cartFeedbackTimer.current);
+  }, []);
 
   useEffect(() => {
     const originalCart = cartAnchorRef.current?.querySelector("button");
@@ -366,10 +453,7 @@ export default function MarketplaceStore() {
     () => cart.reduce((total, item) => total + item.kit.price * item.quantity, 0),
     [cart],
   );
-  const cartQuantity = useMemo(
-    () => cart.reduce((total, item) => total + item.quantity, 0),
-    [cart],
-  );
+  const cartProductCount = cart.length;
   const normalizedSearchTerm = normalizeSearchText(searchTerm.trim());
   const visibleProducts = useMemo(
     () => kits.filter((product) => {
@@ -385,22 +469,53 @@ export default function MarketplaceStore() {
     [categoryFilter, kits, normalizedSearchTerm],
   );
 
-  function addToCart(kit: MarketplaceKit) {
+  const currentAnnouncement = announcements.length
+    ? announcements[announcementIndex % announcements.length]
+    : null;
+
+  function selectedQuantity(product: MarketplaceKit) {
+    return selectedQuantities[product.id] ?? quantityStep(product);
+  }
+
+  function changeSelectedQuantity(product: MarketplaceKit, delta: number) {
+    const step = quantityStep(product);
+    setSelectedQuantities((current) => {
+      const currentValue = current[product.id] ?? step;
+      const nextValue = Math.min(20, Math.max(step, Math.round((currentValue + delta) * 1000) / 1000));
+      return { ...current, [product.id]: nextValue };
+    });
+  }
+
+  function addToCart(kit: MarketplaceKit, quantity: number) {
     setCart((current) => {
       const existing = current.find((item) => item.kit.id === kit.id);
-      if (!existing) return [...current, { kit, quantity: 1 }];
+      if (!existing) return [...current, { kit, quantity }];
       return current.map((item) =>
         item.kit.id === kit.id
           ? {
               ...item,
               kit,
-              quantity: Math.min(20, Math.round((item.quantity + (kit.sale_unit === "kg" ? 0.5 : 1)) * 1000) / 1000),
+              quantity: Math.min(20, Math.round((item.quantity + quantity) * 1000) / 1000),
             }
           : item,
       );
     });
+    setCheckoutConfirmation(null);
     setCheckoutError("");
-    setCheckoutOpen(true);
+    setCartFeedback(`${formatQuantity(quantity)} ${unitLabel(kit)} · ${kit.name} adicionado à sacola`);
+    setCartPulse(true);
+    if (cartFeedbackTimer.current !== null) window.clearTimeout(cartFeedbackTimer.current);
+    cartFeedbackTimer.current = window.setTimeout(() => {
+      setCartFeedback("");
+      setCartPulse(false);
+      cartFeedbackTimer.current = null;
+    }, 1900);
+  }
+
+  function beginDirectPurchase(product: MarketplaceKit) {
+    const quantity = selectedQuantity(product);
+    addToCart(product, quantity);
+    setDirectPurchase({ product, quantity });
   }
 
   function updateQuantity(kitId: string, delta: number) {
@@ -422,12 +537,54 @@ export default function MarketplaceStore() {
     key: K,
     value: CheckoutForm[K],
   ) {
+    if (key === "postalCode") {
+      checkoutCepRequest.current += 1;
+      setCheckoutCepFeedback(null);
+    }
     setCheckoutForm((current) => ({ ...current, [key]: value }));
     setCheckoutError("");
   }
 
+  async function lookupCheckoutCep() {
+    const cep = digits(checkoutForm.postalCode);
+    if (cep.length !== 8) return;
+
+    const requestId = ++checkoutCepRequest.current;
+    setCheckoutCepFeedback({ type: "loading", message: "Buscando endereço pelo CEP..." });
+    try {
+      const address = await lookupCep(cep);
+      if (requestId !== checkoutCepRequest.current) return;
+      if (!address) {
+        setCheckoutCepFeedback({ type: "error", message: "CEP não encontrado. Confira o número ou preencha o endereço manualmente." });
+        return;
+      }
+
+      setCheckoutForm((current) => ({
+        ...current,
+        address: current.address || address.street,
+        neighborhood: current.neighborhood || address.neighborhood,
+        city: current.city || address.city,
+      }));
+      setCheckoutCepFeedback({ type: "success", message: "Endereço preenchido. Confira os dados antes de continuar." });
+    } catch (error) {
+      if (requestId !== checkoutCepRequest.current) return;
+      setCheckoutCepFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Não foi possível consultar o CEP agora. Tente novamente.",
+      });
+    }
+  }
+
   function openCheckout() {
     setCheckoutError("");
+    setDirectPurchase(null);
+    setCheckoutOpen(true);
+  }
+
+  function finalizeDirectPurchase() {
+    setCheckoutError("");
+    setCheckoutConfirmation(null);
+    setDirectPurchase(null);
     setCheckoutOpen(true);
   }
 
@@ -482,9 +639,12 @@ export default function MarketplaceStore() {
     }
 
     const message = buildWhatsAppMessage(data, checkoutForm);
-    window.location.assign(
-      `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`,
-    );
+    setCart([]);
+    setCheckoutConfirmation({
+      whatsappUrl: `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`,
+      orderNumber: data.order_id.slice(0, 8).toUpperCase(),
+      customerName: customerGreetingName.trim() || checkoutForm.customerName.trim() || "Cliente",
+    });
   }
 
   return (
@@ -501,26 +661,26 @@ export default function MarketplaceStore() {
 
       <div ref={cartAnchorRef} className="store-cart-anchor">
         <button
-          className={isCartFloating ? "store-cart-button store-cart-button-placeholder" : "store-cart-button"}
+          className={`${isCartFloating ? "store-cart-button store-cart-button-placeholder" : "store-cart-button"}${cartPulse ? " store-cart-button-bump" : ""}`}
           type="button"
           onClick={openCheckout}
-          aria-label={`Abrir pedido, ${formatQuantity(cartQuantity)} itens`}
+          aria-label={`Abrir pedido, ${cartProductCount} ${cartProductCount === 1 ? "produto" : "produtos"}`}
         >
           <ShoppingBag size={17} /> Meu pedido
-          <span>{formatQuantity(cartQuantity)}</span>
+          <span>{cartProductCount}</span>
         </button>
       </div>
 
       {isCartFloating && createPortal(
         <button
           ref={floatingCartRef}
-          className="store-cart-button store-cart-floating"
+          className={`store-cart-button store-cart-floating${cartPulse ? " store-cart-button-bump" : ""}`}
           type="button"
           onClick={openCheckout}
-          aria-label={`Abrir pedido, ${formatQuantity(cartQuantity)} itens`}
+          aria-label={`Abrir pedido, ${cartProductCount} ${cartProductCount === 1 ? "produto" : "produtos"}`}
         >
           <ShoppingBag size={17} /> Meu pedido
-          <span>{formatQuantity(cartQuantity)}</span>
+          <span>{cartProductCount}</span>
         </button>,
         document.body,
       )}
@@ -600,13 +760,44 @@ export default function MarketplaceStore() {
                     <p>{kit.contents}</p>
                   </div>
                 )}
-                <button
-                  type="button"
-                  className="store-buy-button"
-                  onClick={() => addToCart(kit)}
-                >
-                  {kit.product_type === "kit" ? "Adicionar kit" : "Adicionar à feira"} <ArrowRight size={17} />
-                </button>
+                <div className="store-product-quantity">
+                  <span>{unitLabel(kit) === "kg" || unitLabel(kit) === "quilo" ? "Quanto você quer?" : "Quantidade"}</span>
+                  <div className="store-product-quantity-control">
+                    <button
+                      type="button"
+                      onClick={() => changeSelectedQuantity(kit, -quantityStep(kit))}
+                      disabled={selectedQuantity(kit) <= quantityStep(kit)}
+                      aria-label={`Diminuir quantidade de ${kit.name}`}
+                    >
+                      <Minus size={13} />
+                    </button>
+                    <strong>{formatQuantity(selectedQuantity(kit))} <small>{unitLabel(kit)}</small></strong>
+                    <button
+                      type="button"
+                      onClick={() => changeSelectedQuantity(kit, quantityStep(kit))}
+                      disabled={selectedQuantity(kit) >= 20}
+                      aria-label={`Aumentar quantidade de ${kit.name}`}
+                    >
+                      <Plus size={13} />
+                    </button>
+                  </div>
+                </div>
+                <div className="store-card-actions">
+                  <button
+                    type="button"
+                    className="store-add-button"
+                    onClick={() => addToCart(kit, selectedQuantity(kit))}
+                  >
+                    <ShoppingBag size={15} /> Adicionar à sacola
+                  </button>
+                  <button
+                    type="button"
+                    className="store-buy-button"
+                    onClick={() => beginDirectPurchase(kit)}
+                  >
+                    Comprar direto <ArrowRight size={16} />
+                  </button>
+                </div>
               </div>
             </article>
           ))}
@@ -620,6 +811,34 @@ export default function MarketplaceStore() {
             : "Estamos preparando os primeiros produtos. Em breve você poderá montar sua feira por aqui."}
         </div>
       ) : null}
+      {announcementError && (
+        <p className="store-announcement-error" role="status">{announcementError}</p>
+      )}
+      {cartFeedback && createPortal(
+        <div className="store-cart-feedback" role="status" aria-live="polite">
+          <Check size={16} /> {cartFeedback}
+        </div>,
+        document.body,
+      )}
+      {currentAnnouncement && createPortal(
+        <aside
+          key={currentAnnouncement.id}
+          className="store-announcement-toast"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <span><Megaphone size={14} /> Recado da feira</span>
+          <strong>{currentAnnouncement.message}</strong>
+          {currentAnnouncement.price !== null && (
+            <small>
+              {currency(currentAnnouncement.price)}
+              {currentAnnouncement.unit ? ` / ${currentAnnouncement.unit}` : ""}
+            </small>
+          )}
+        </aside>,
+        document.body,
+      )}
       <p className="store-footnote"><Check size={14} /> Pedido enviado pelo WhatsApp para confirmar entrega e pagamento.</p>
 
       {checkoutOpen && createPortal(
@@ -641,8 +860,8 @@ export default function MarketplaceStore() {
           >
             <header className="checkout-header">
               <div>
-                <span className="checkout-kicker">Falta pouco</span>
-                <h2 id="checkout-title">Seu pedido</h2>
+                <span className="checkout-kicker">{checkoutConfirmation ? "PEDIDO REGISTRADO" : "FALTA POUCO"}</span>
+                <h2 id="checkout-title">{checkoutConfirmation ? "Sua compra está quase lá" : "Seu pedido"}</h2>
               </div>
               <button
                 type="button"
@@ -655,7 +874,31 @@ export default function MarketplaceStore() {
               </button>
             </header>
 
-            {cart.length ? (
+            {checkoutConfirmation ? (
+              <div className="checkout-confirmation">
+                <span className="checkout-confirmation-icon"><Check size={23} /></span>
+                <small>PEDIDO #{checkoutConfirmation.orderNumber}</small>
+                <h3>Sua compra está quase finalizada, {checkoutConfirmation.customerName.split(" ")[0] || "Cliente"}!</h3>
+                <p>Confira os itens e os dados de entrega na conversa. Toque abaixo para enviar o pedido à Kit Feira pelo WhatsApp.</p>
+                <button
+                  type="button"
+                  className="checkout-submit"
+                  onClick={() => window.location.assign(checkoutConfirmation.whatsappUrl)}
+                >
+                  Finalizar pedido pelo WhatsApp <ArrowRight size={17} />
+                </button>
+                <button
+                  type="button"
+                  className="checkout-confirmation-back"
+                  onClick={() => {
+                    setCheckoutConfirmation(null);
+                    setCheckoutOpen(false);
+                  }}
+                >
+                  Voltar à loja
+                </button>
+              </div>
+            ) : cart.length ? (
               <>
                 <div className="checkout-items">
                   {cart.map(({ kit, quantity }) => (
@@ -670,9 +913,9 @@ export default function MarketplaceStore() {
                         <span>{currency(kit.price)} / {unitLabel(kit)}</span>
                       </div>
                         <div className="checkout-quantity" aria-label={`Quantidade de ${kit.name}`}>
-                          <button type="button" onClick={() => updateQuantity(kit.id, kit.sale_unit === "kg" ? -0.5 : -1)} aria-label="Diminuir quantidade"><Minus size={13} /></button>
+                          <button type="button" onClick={() => updateQuantity(kit.id, -quantityStep(kit))} aria-label="Diminuir quantidade"><Minus size={13} /></button>
                           <span>{formatQuantity(quantity)}</span>
-                          <button type="button" onClick={() => updateQuantity(kit.id, kit.sale_unit === "kg" ? 0.5 : 1)} aria-label="Aumentar quantidade" disabled={quantity >= 20}><Plus size={13} /></button>
+                          <button type="button" onClick={() => updateQuantity(kit.id, quantityStep(kit))} aria-label="Aumentar quantidade" disabled={quantity >= 20}><Plus size={13} /></button>
                       </div>
                     </article>
                   ))}
@@ -743,6 +986,7 @@ export default function MarketplaceStore() {
                         inputMode="numeric"
                         value={checkoutForm.postalCode}
                         onChange={(event) => updateCheckout("postalCode", formatPostalCode(event.target.value))}
+                        onBlur={() => void lookupCheckoutCep()}
                         maxLength={9}
                         placeholder="00000-000"
                       />
@@ -757,6 +1001,11 @@ export default function MarketplaceStore() {
                         required
                       />
                     </label>
+                    {checkoutCepFeedback && (
+                      <p className={`checkout-cep-feedback ${checkoutCepFeedback.type}`} role={checkoutCepFeedback.type === "error" ? "alert" : "status"}>
+                        {checkoutCepFeedback.message}
+                      </p>
+                    )}
                     <label className="checkout-address-street">
                       Complemento <span>(opcional)</span>
                       <input
@@ -789,7 +1038,7 @@ export default function MarketplaceStore() {
                     {submitting ? (
                       <><LoaderCircle className="spin" size={17} /> Preparando seu pedido...</>
                     ) : (
-                      <>Continuar no WhatsApp <ArrowRight size={17} /></>
+                      <>Preparar pedido <ArrowRight size={17} /></>
                     )}
                   </button>
                   <p className="checkout-privacy">Ao continuar, seus dados serão usados para organizar a entrega deste pedido.</p>
@@ -803,6 +1052,49 @@ export default function MarketplaceStore() {
                 <button type="button" onClick={() => setCheckoutOpen(false)}>Continuar comprando</button>
               </div>
             )}
+          </section>
+        </div>,
+        document.body,
+      )}
+
+      {directPurchase && createPortal(
+        <div
+          className="checkout-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDirectPurchase(null);
+          }}
+        >
+          <section
+            ref={directPurchaseDialogRef}
+            className="direct-purchase-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="direct-purchase-title"
+            tabIndex={-1}
+          >
+            <button
+              type="button"
+              className="checkout-close direct-purchase-close"
+              aria-label="Fechar"
+              onClick={() => setDirectPurchase(null)}
+            >
+              <X size={18} />
+            </button>
+            <span className="direct-purchase-icon"><ShoppingBag size={21} /></span>
+            <span className="checkout-kicker">ESCOLHA O PRÓXIMO PASSO</span>
+            <h2 id="direct-purchase-title">Boa escolha!</h2>
+            <p className="direct-purchase-item">
+              {formatQuantity(directPurchase.quantity)} {unitLabel(directPurchase.product)} · {directPurchase.product.name}
+            </p>
+            <p>O produto já está na sua sacola. Quer continuar escolhendo ou seguir para finalizar o pedido?</p>
+            <div className="direct-purchase-actions">
+              <button type="button" className="direct-purchase-continue" onClick={() => setDirectPurchase(null)}>
+                Continuar comprando
+              </button>
+              <button type="button" className="direct-purchase-finish" onClick={finalizeDirectPurchase}>
+                Finalizar compra <ArrowRight size={16} />
+              </button>
+            </div>
           </section>
         </div>,
         document.body,

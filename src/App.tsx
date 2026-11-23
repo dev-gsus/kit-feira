@@ -24,9 +24,9 @@ import {
   isCustomerAccountPath,
   isCustomerLoginPath,
 } from "./lib/routes";
-import AdminApp from "./Admin";
 import MarketplaceStore from "./MarketplaceStore";
 
+const AdminApp = lazy(() => import("./Admin"));
 const CustomerAccount = lazy(() => import("./CustomerAccount"));
 
 type Raffle = {
@@ -708,7 +708,13 @@ function PublicSite() {
 
 function App() {
   const { pathname } = window.location;
-  if (isAdminPath(pathname)) return <AdminApp />;
+  if (isAdminPath(pathname)) {
+    return (
+      <Suspense fallback={<div className="admin-loading">Carregando o painel...</div>}>
+        <AdminApp />
+      </Suspense>
+    );
+  }
   if (isCustomerLoginPath(pathname) || isCustomerAccountPath(pathname)) {
     return (
       <Suspense fallback={<div className="admin-loading">Carregando sua conta...</div>}>

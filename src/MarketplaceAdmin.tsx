@@ -7,6 +7,7 @@ import {
   CircleAlert,
   ImagePlus,
   LoaderCircle,
+  Megaphone,
   Pencil,
   Plus,
   ReceiptText,
@@ -126,7 +127,22 @@ type CostComparison = {
   difference_percent: number | null;
 };
 
-type AdminSection = "overview" | "kits" | "orders" | "customers" | "costs";
+type StoreAnnouncement = {
+  id: string;
+  message: string;
+  price: number | null;
+  unit: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+type AnnouncementForm = {
+  message: string;
+  price: string;
+  unit: string;
+};
+
+type AdminSection = "overview" | "kits" | "orders" | "customers" | "announcements" | "costs";
 type MarketplaceAdminProps = {
   compact?: boolean;
   onOpenStore?: () => void;
@@ -180,6 +196,10 @@ function emptyCostForm(): CostForm {
     purchasedOn: todayDate(),
     notes: "",
   };
+}
+
+function emptyAnnouncementForm(): AnnouncementForm {
+  return { message: "", price: "", unit: "" };
 }
 
 function currency(value: number) {
@@ -264,6 +284,12 @@ export default function MarketplaceAdmin({
   const [customersError, setCustomersError] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerReload, setCustomerReload] = useState(0);
+  const [announcements, setAnnouncements] = useState<StoreAnnouncement[]>([]);
+  const [announcementForm, setAnnouncementForm] = useState<AnnouncementForm>(emptyAnnouncementForm);
+  const [announcementLoading, setAnnouncementLoading] = useState(false);
+  const [announcementSaving, setAnnouncementSaving] = useState(false);
+  const [announcementError, setAnnouncementError] = useState("");
+  const [announcementReload, setAnnouncementReload] = useState(0);
 
   const recentOrders = useMemo(() => orders.slice(0, 5), [orders]);
   const visibleCustomers = useMemo(() => {
@@ -391,6 +417,40 @@ export default function MarketplaceAdmin({
       active = false;
     };
   }, [customerReload, section]);
+
+  useEffect(() => {
+    if (section !== "announcements") return;
+    if (!supabase) {
+      setAnnouncementError("O banco de dados não está configurado neste ambiente.");
+      return;
+    }
+
+    let active = true;
+    setAnnouncementLoading(true);
+    setAnnouncementError("");
+    void supabase
+      .from("marketplace_announcements")
+      .select("id, message, price, unit, is_active, created_at")
+      .order("created_at", { ascending: false })
+      .limit(50)
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          setAnnouncementError(
+            ["PGRST202", "PGRST204", "PGRST205"].includes(error.code ?? "")
+              ? "Aplique supabase/migrations/20261123_marketplace_announcements.sql para habilitar os recados da feira."
+              : `Não foi possível carregar os recados: ${error.message}`,
+          );
+          setAnnouncementLoading(false);
+          return;
+        }
+        setAnnouncements((data ?? []) as StoreAnnouncement[]);
+        setAnnouncementLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [announcementReload, section]);
 
   function updateKitForm<K extends keyof KitForm>(key: K, value: KitForm[K]) {
     setKitForm((current) => ({ ...current, [key]: value }));
@@ -581,6 +641,65 @@ export default function MarketplaceAdmin({
     await loadData();
   }
 
+  function updateAnnouncementForm<K extends keyof AnnouncementForm>(
+    key: K,
+    value: AnnouncementForm[K],
+  ) {
+    setAnnouncementForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function saveAnnouncement(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase) return;
+    setAnnouncementError("");
+
+    const message = announcementForm.message.trim();
+    const hasPrice = announcementForm.price.trim() !== "";
+    const price = hasPrice ? Number(announcementForm.price.replace(",", ".")) : null;
+    if (message.length < 3 || message.length > 180) {
+      setAnnouncementError("Escreva um recado de 3 a 180 caracteres.");
+      return;
+    }
+    if (price !== null && (!Number.isFinite(price) || price < 0)) {
+      setAnnouncementError("Informe um preço válido ou deixe o campo em branco.");
+      return;
+    }
+
+    setAnnouncementSaving(true);
+    const { error: insertError } = await supabase
+      .from("marketplace_announcements")
+      .insert({
+        message,
+        price,
+        unit: announcementForm.unit.trim(),
+        is_active: true,
+      });
+    setAnnouncementSaving(false);
+    if (insertError) {
+      setAnnouncementError(`Não foi possível publicar o recado: ${insertError.message}`);
+      return;
+    }
+
+    setAnnouncementForm(emptyAnnouncementForm());
+    setNotice("Recado da feira publicado na loja.");
+    setAnnouncementReload((current) => current + 1);
+  }
+
+  async function toggleAnnouncement(announcement: StoreAnnouncement) {
+    if (!supabase) return;
+    setAnnouncementError("");
+    const { error: updateError } = await supabase
+      .from("marketplace_announcements")
+      .update({ is_active: !announcement.is_active, updated_at: new Date().toISOString() })
+      .eq("id", announcement.id);
+    if (updateError) {
+      setAnnouncementError(`Não foi possível atualizar o recado: ${updateError.message}`);
+      return;
+    }
+    setNotice(announcement.is_active ? "Recado ocultado da loja." : "Recado publicado na loja.");
+    setAnnouncementReload((current) => current + 1);
+  }
+
   const costChange = costComparison?.difference ?? null;
   const costAlertType =
     costChange === null ? "first" : costChange > 0 ? "increase" : costChange < 0 ? "saving" : "same";
@@ -626,6 +745,7 @@ export default function MarketplaceAdmin({
             ["kits", "Produtos"],
             ["orders", "Pedidos"],
             ["customers", "Clientes"],
+            ["announcements", "Recados da feira"],
             ["costs", "Custos de compra"],
           ] as const).map(([id, label]) => (
             <button
@@ -968,6 +1088,94 @@ export default function MarketplaceAdmin({
                 : "Os clientes que criarem uma conta aparecerão aqui, junto ao histórico de compras."}
             </div>
           )}
+        </div>
+      )}
+
+      {section === "announcements" && (
+        <div>
+          <div className="marketplace-admin-toolbar">
+            <div>
+              <h2>Recados da feira</h2>
+              <p>Crie chamadas de preço e novidades que aparecem animadas na loja.</p>
+            </div>
+          </div>
+          <form className="marketplace-announcement-form" onSubmit={(event) => void saveAnnouncement(event)}>
+            <div className="marketplace-announcement-form-heading">
+              <i><Megaphone size={17} /></i>
+              <div><strong>Novo recado</strong><small>Ex.: “Olha a laranja!” ou “Caiu, caiu o preço da maçã!”</small></div>
+            </div>
+            <div className="marketplace-announcement-fields">
+              <label>
+                Frase da feira *
+                <input
+                  value={announcementForm.message}
+                  onChange={(event) => updateAnnouncementForm("message", event.target.value)}
+                  maxLength={180}
+                  placeholder="Caiu, caiu o preço da maçã!"
+                  required
+                />
+              </label>
+              <label>
+                Preço (opcional)
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={announcementForm.price}
+                  onChange={(event) => updateAnnouncementForm("price", event.target.value)}
+                  placeholder="0,00"
+                />
+              </label>
+              <label>
+                Unidade
+                <input
+                  value={announcementForm.unit}
+                  onChange={(event) => updateAnnouncementForm("unit", event.target.value)}
+                  maxLength={24}
+                  placeholder="kg, unidade..."
+                />
+              </label>
+            </div>
+            <div className="marketplace-announcement-preview" aria-live="polite">
+              <span>PRÉVIA NA LOJA</span>
+              <strong>{announcementForm.message.trim() || "Olha a laranja!"}</strong>
+              {announcementForm.price.trim() && Number.isFinite(Number(announcementForm.price)) && Number(announcementForm.price) >= 0 && (
+                <b>{currency(Number(announcementForm.price))}{announcementForm.unit.trim() ? ` / ${announcementForm.unit.trim()}` : ""}</b>
+              )}
+            </div>
+            {announcementError && <div className="marketplace-admin-error" role="alert"><CircleAlert size={15} /> {announcementError}</div>}
+            <button className="button button-dark marketplace-announcement-submit" type="submit" disabled={announcementSaving}>
+              {announcementSaving ? <><LoaderCircle className="spin" size={15} /> Publicando...</> : <>Publicar recado <ArrowRight size={15} /></>}
+            </button>
+          </form>
+
+          <div className="marketplace-admin-toolbar">
+            <div><h2>Recados cadastrados</h2><p>Recados ativos aparecem no canto da tela da loja; os ocultos ficam guardados aqui.</p></div>
+            <button type="button" className="admin-link-button" onClick={() => setAnnouncementReload((current) => current + 1)}>
+              Atualizar lista <ArrowRight size={14} />
+            </button>
+          </div>
+          {announcementLoading ? (
+            <div className="admin-loading-inline"><LoaderCircle className="spin" size={17} /> Carregando recados...</div>
+          ) : announcements.length ? (
+            <div className="marketplace-announcement-list">
+              {announcements.map((announcement) => (
+                <article className={announcement.is_active ? "marketplace-announcement-row active" : "marketplace-announcement-row"} key={announcement.id}>
+                  <i><Megaphone size={16} /></i>
+                  <div>
+                    <strong>{announcement.message}</strong>
+                    {announcement.price !== null && <small>{currency(announcement.price)}{announcement.unit ? ` / ${announcement.unit}` : ""}</small>}
+                  </div>
+                  <span className="marketplace-announcement-status">{announcement.is_active ? "Publicado" : "Oculto"}</span>
+                  <button type="button" className="admin-secondary-button" onClick={() => void toggleAnnouncement(announcement)}>
+                    {announcement.is_active ? "Ocultar" : "Publicar"}
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : !announcementError ? (
+            <div className="marketplace-admin-empty">Seus recados de preço e novidades aparecerão aqui depois de publicados.</div>
+          ) : null}
         </div>
       )}
 

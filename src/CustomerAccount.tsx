@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
   ArrowLeft,
@@ -18,6 +18,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import { lookupCep } from "./lib/cep";
 import { appPath } from "./lib/routes";
 import "./customer-account.css";
 
@@ -126,6 +127,9 @@ function dateTime(value: string) {
 }
 
 function authMessage(message: string) {
+  if (/over_email_send_rate_limit|email.*rate limit|rate limit.*email/i.test(message)) {
+    return "O limite de envio de e-mails do Supabase foi atingido. Aguarde antes de tentar novamente. Se você já tentou criar a conta, experimente entrar; para evitar esse limite em produção, configure um SMTP próprio no Supabase.";
+  }
   if (/invalid login credentials/i.test(message)) return "E-mail ou senha incorretos.";
   if (/email not confirmed/i.test(message)) return "Confirme seu e-mail antes de entrar.";
   if (/user already registered/i.test(message)) return "Este e-mail já possui uma conta. Faça login.";
@@ -158,6 +162,8 @@ export default function CustomerAccount({ accountRoute }: { accountRoute: boolea
   const [addressDraft, setAddressDraft] = useState<AddressDraft>(emptyAddress);
   const [addressFormOpen, setAddressFormOpen] = useState(false);
   const [addressSaving, setAddressSaving] = useState(false);
+  const [cepFeedback, setCepFeedback] = useState<{ type: "loading" | "success" | "error"; message: string } | null>(null);
+  const cepLookupRequest = useRef(0);
 
   useEffect(() => {
     if (!supabase) {
@@ -388,6 +394,38 @@ export default function CustomerAccount({ accountRoute }: { accountRoute: boolea
     if (session) await loadAccount(session.user.id);
   }
 
+  async function lookupAddressFromCep() {
+    const cep = digits(addressDraft.postalCode);
+    if (cep.length !== 8) return;
+
+    const requestId = ++cepLookupRequest.current;
+    setCepFeedback({ type: "loading", message: "Buscando endereço pelo CEP..." });
+    try {
+      const address = await lookupCep(cep);
+      if (requestId !== cepLookupRequest.current) return;
+      if (!address) {
+        setCepFeedback({ type: "error", message: "CEP não encontrado. Confira o número ou preencha o endereço manualmente." });
+        return;
+      }
+
+      setAddressDraft((current) => ({
+        ...current,
+        deliveryAddress: current.deliveryAddress || address.street,
+        neighborhood: current.neighborhood || address.neighborhood,
+        city: current.city || address.city,
+      }));
+      setCepFeedback({ type: "success", message: "Endereço preenchido. Confira os dados antes de salvar." });
+    } catch (error) {
+      if (requestId !== cepLookupRequest.current) return;
+      setCepFeedback({
+        type: "error",
+        message: error instanceof Error
+          ? error.message
+          : "Não foi possível consultar o CEP agora. Tente novamente ou preencha manualmente.",
+      });
+    }
+  }
+
   async function removeAddress(address: CustomerAddress) {
     if (!supabase || !window.confirm(`Remover o endereço "${address.label}"?`)) return;
     setAccountError("");
@@ -503,7 +541,8 @@ export default function CustomerAccount({ accountRoute }: { accountRoute: boolea
                           <label className="wide">Rua / avenida<input value={addressDraft.deliveryAddress} onChange={(event) => setAddressDraft((current) => ({ ...current, deliveryAddress: event.target.value }))} maxLength={180} required /></label>
                           <label>Número<input value={addressDraft.addressNumber} onChange={(event) => setAddressDraft((current) => ({ ...current, addressNumber: event.target.value }))} maxLength={30} required /></label>
                           <label>Bairro<input value={addressDraft.neighborhood} onChange={(event) => setAddressDraft((current) => ({ ...current, neighborhood: event.target.value }))} maxLength={100} required /></label>
-                          <label>CEP<input value={addressDraft.postalCode} onChange={(event) => setAddressDraft((current) => ({ ...current, postalCode: formatPostalCode(event.target.value) }))} inputMode="numeric" maxLength={9} placeholder="00000-000" /></label>
+                          <label>CEP<input value={addressDraft.postalCode} onChange={(event) => { cepLookupRequest.current += 1; setCepFeedback(null); setAddressDraft((current) => ({ ...current, postalCode: formatPostalCode(event.target.value) })); }} onBlur={() => void lookupAddressFromCep()} inputMode="numeric" autoComplete="postal-code" maxLength={9} placeholder="00000-000" /></label>
+                          {cepFeedback && <p className={`customer-cep-feedback ${cepFeedback.type}`} role={cepFeedback.type === "error" ? "alert" : "status"}>{cepFeedback.message}</p>}
                           <label>Cidade<input value={addressDraft.city} onChange={(event) => setAddressDraft((current) => ({ ...current, city: event.target.value }))} maxLength={100} required /></label>
                           <label className="wide">Complemento (opcional)<input value={addressDraft.complement} onChange={(event) => setAddressDraft((current) => ({ ...current, complement: event.target.value }))} maxLength={120} placeholder="Apartamento, casa, referência..." /></label>
                           <div className="customer-form-actions"><button type="button" className="customer-cancel-button" onClick={() => setAddressFormOpen(false)}>Cancelar</button><button type="submit" className="customer-primary-button" disabled={addressSaving}>{addressSaving ? <><LoaderCircle className="spin" size={15} /> Salvando...</> : <>Salvar endereço <ArrowRight size={15} /></>}</button></div>
