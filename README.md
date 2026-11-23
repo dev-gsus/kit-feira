@@ -66,6 +66,19 @@ O build configura o caminho do site para o nome do repositório e inclui um
 fallback para abrir `/admin` no GitHub Pages. O projeto não está conectado a
 um repositório remoto por padrão.
 
+## Publicar na Vercel
+
+O projeto Kit Feira também está conectado ao repositório `dev-gsus/kit-feira`
+na Vercel. Cada push para `main` inicia uma publicação; o endereço principal é
+`https://kit-feira.vercel.app`.
+
+Em **Settings → Environment Variables**, mantenha `VITE_SUPABASE_URL` e
+`VITE_SUPABASE_ANON_KEY` disponíveis nos ambientes Production, Preview e
+Development. A chave usada no site deve ser a chave publishable do Supabase;
+ela é incorporada ao JavaScript do navegador. Nunca use `service_role`.
+O arquivo `vercel.json` reescreve `/admin` para a aplicação React para que o
+link de login funcione também ao abrir a rota diretamente.
+
 ## Sorteios
 
 Os sorteios continuam disponíveis em seção própria. O CPF permite uma
