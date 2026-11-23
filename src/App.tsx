@@ -437,11 +437,31 @@ function PublicSite() {
               </span>
             </div>
 
+            {raffle && entryOpen && (
+              <div className="raffle-live-callout">
+                <span className="raffle-pulse-indicator" aria-hidden="true" />
+                <div className="raffle-live-copy">
+                  <strong>O sorteio está valendo!</strong>
+                  <span>Inscreva-se e concorra a {raffle.prize}.</span>
+                </div>
+                <Sparkles size={18} aria-hidden="true" />
+              </div>
+            )}
+
             {raffle && (
               <div className="prize-banner">
                 <span className="prize-icon"><Gift size={21} /></span>
                 <div><small>VOCÊ PODE GANHAR</small><strong>{raffle.prize}</strong></div>
                 <Sparkles className="prize-sparkle" size={20} />
+              </div>
+            )}
+            {raffle && (
+              <div className="raffle-group-rule">
+                <ShieldCheck size={17} aria-hidden="true" />
+                <p>
+                  <strong>Regra para validar o prêmio</strong>
+                  <span>O ganhador sorteado precisa estar no grupo oficial do Kit Feira para validar o prêmio. Se não estiver no grupo, realizaremos um novo sorteio.</span>
+                </p>
               </div>
             )}
             {raffle && (raffle.photo_url || raffle.description || raffle.rules) && (
