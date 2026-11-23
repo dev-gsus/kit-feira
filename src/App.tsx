@@ -650,7 +650,7 @@ function PublicSite() {
         <MessageCircle size={28} />
         <Phone className="whatsapp-phone-icon" size={12} />
       </span>
-      <span>Fale com a gente</span>
+      <span className="whatsapp-tooltip">Fale com a gente</span>
     </a>
     </>
   );
