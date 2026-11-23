@@ -370,12 +370,29 @@ create table if not exists public.marketplace_kits (
   contents text not null default '',
   image_url text,
   price numeric(10, 2) not null check (price >= 0),
+  product_type text not null default 'kit' check (product_type in ('kit', 'loose')),
+  sale_unit text not null default 'kit' check (char_length(btrim(sale_unit)) between 1 and 20),
   is_active boolean not null default true,
   is_featured boolean not null default false,
   display_order integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.marketplace_kits
+  add column if not exists product_type text not null default 'kit';
+alter table public.marketplace_kits
+  add column if not exists sale_unit text not null default 'kit';
+alter table public.marketplace_kits
+  drop constraint if exists marketplace_kits_product_type_check;
+alter table public.marketplace_kits
+  add constraint marketplace_kits_product_type_check
+  check (product_type in ('kit', 'loose'));
+alter table public.marketplace_kits
+  drop constraint if exists marketplace_kits_sale_unit_check;
+alter table public.marketplace_kits
+  add constraint marketplace_kits_sale_unit_check
+  check (char_length(btrim(sale_unit)) between 1 and 20);
 
 create table if not exists public.marketplace_orders (
   id uuid primary key default gen_random_uuid(),
@@ -400,11 +417,24 @@ create table if not exists public.marketplace_order_items (
   order_id uuid not null references public.marketplace_orders (id) on delete cascade,
   kit_id uuid references public.marketplace_kits (id) on delete set null,
   kit_name text not null,
-  quantity integer not null check (quantity between 1 and 20),
+  quantity numeric(12, 3) not null check (quantity > 0 and quantity <= 20),
+  unit_label text not null default 'kit',
   unit_price numeric(10, 2) not null check (unit_price >= 0),
   line_total numeric(10, 2) not null check (line_total >= 0),
   created_at timestamptz not null default now()
 );
+
+alter table public.marketplace_order_items
+  alter column quantity type numeric(12, 3) using quantity::numeric;
+alter table public.marketplace_order_items
+  add column if not exists unit_label text not null default 'kit';
+alter table public.marketplace_order_items
+  alter column unit_label set default 'kit';
+alter table public.marketplace_order_items
+  drop constraint if exists marketplace_order_items_quantity_check;
+alter table public.marketplace_order_items
+  add constraint marketplace_order_items_quantity_check
+  check (quantity > 0 and quantity <= 20);
 
 create table if not exists public.purchase_costs (
   id uuid primary key default gen_random_uuid(),
@@ -541,16 +571,16 @@ begin
   end if;
 
   for requested_item in
-    select item.kit_id, sum(item.quantity)::integer as quantity
-    from jsonb_to_recordset(p_items) as item(kit_id uuid, quantity integer)
+    select item.kit_id, sum(item.quantity)::numeric(12, 3) as quantity
+    from jsonb_to_recordset(p_items) as item(kit_id uuid, quantity numeric)
     group by item.kit_id
     order by item.kit_id
   loop
     if requested_item.kit_id is null
       or requested_item.quantity is null
-      or requested_item.quantity < 1
+      or requested_item.quantity <= 0
       or requested_item.quantity > 20 then
-      raise exception using errcode = '22023', message = 'A quantidade do kit deve ficar entre 1 e 20.';
+      raise exception using errcode = '22023', message = 'A quantidade do produto deve ficar entre 0 e 20.';
     end if;
 
     select * into kit_row
@@ -560,7 +590,12 @@ begin
     for share;
 
     if not found then
-      raise exception using errcode = 'P0002', message = 'Um dos kits do pedido não está mais disponível.';
+      raise exception using errcode = 'P0002', message = 'Um dos produtos do pedido não está mais disponível.';
+    end if;
+
+    if (kit_row.product_type = 'kit' or kit_row.sale_unit not in ('kg', 'quilo'))
+      and requested_item.quantity <> trunc(requested_item.quantity) then
+      raise exception using errcode = '22023', message = 'Este produto só pode ser pedido em quantidades inteiras.';
     end if;
 
     line_total := round(kit_row.price * requested_item.quantity, 2);
@@ -569,6 +604,7 @@ begin
       'kit_id', kit_row.id,
       'kit_name', kit_row.name,
       'quantity', requested_item.quantity,
+      'unit_label', case when kit_row.product_type = 'kit' then 'kit' else kit_row.sale_unit end,
       'unit_price', kit_row.price,
       'line_total', line_total
     ));
@@ -605,6 +641,7 @@ begin
     kit_id,
     kit_name,
     quantity,
+    unit_label,
     unit_price,
     line_total
   )
@@ -612,7 +649,8 @@ begin
     order_id,
     (item.value->>'kit_id')::uuid,
     item.value->>'kit_name',
-    (item.value->>'quantity')::integer,
+    (item.value->>'quantity')::numeric,
+    item.value->>'unit_label',
     (item.value->>'unit_price')::numeric,
     (item.value->>'line_total')::numeric
   from jsonb_array_elements(order_items) as item(value);
@@ -733,7 +771,7 @@ security invoker
 set search_path = public, pg_temp
 as $$
   select
-    (select count(*) from public.marketplace_kits where is_active),
+    (select count(*) from public.marketplace_kits where is_active and product_type = 'kit'),
     (select count(*) from public.marketplace_orders),
     (select count(*) from public.marketplace_orders where status = 'pending'),
     (select coalesce(sum(total), 0) from public.marketplace_orders where status <> 'cancelled'),

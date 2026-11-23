@@ -157,8 +157,7 @@ function emptyRaffleForm(): RaffleForm {
 function AdminBrand() {
   return (
     <a className="brand" href={appPath()} aria-label="Voltar para Kit Feira">
-      <span className="brand-feira">kit feira</span>
-      <span className="brand-switch" aria-label="on"><span /></span>
+      <img className="brand-logo" src="/kit-feira-logo.png" alt="Kit Feira — Na sua porta" />
     </a>
   );
 }
@@ -677,7 +676,7 @@ function AdminApp() {
           <AdminBrand />
           <span className="admin-kicker">ÁREA RESTRITA</span>
           <h1>Que bom ter você<br /><span>por aqui.</span></h1>
-          <p>Entre para cuidar dos kits, pedidos, custos e campanhas do Kit Feira.</p>
+          <p>Entre para cuidar dos produtos, pedidos, custos e campanhas do Kit Feira.</p>
           <form onSubmit={handleSignIn} className="admin-login-form">
             <label>
               E-mail

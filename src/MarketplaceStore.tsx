@@ -28,6 +28,8 @@ type MarketplaceKit = {
   image_url: string | null;
   price: number;
   is_featured: boolean;
+  product_type: "kit" | "loose";
+  sale_unit: string;
 };
 
 type CartItem = {
@@ -50,6 +52,7 @@ type CheckoutForm = {
 type OrderSnapshot = {
   kit_name: string;
   quantity: number;
+  unit_label: string;
   unit_price: number;
   line_total: number;
 };
@@ -73,6 +76,7 @@ function isCreatedOrder(value: unknown): value is CreatedOrder {
         typeof item === "object" &&
         typeof (item as Record<string, unknown>).kit_name === "string" &&
         typeof (item as Record<string, unknown>).quantity === "number" &&
+        typeof (item as Record<string, unknown>).unit_label === "string" &&
         typeof (item as Record<string, unknown>).unit_price === "number" &&
         typeof (item as Record<string, unknown>).line_total === "number",
     )
@@ -84,6 +88,14 @@ function currency(value: number) {
     style: "currency",
     currency: "BRL",
   }).format(value);
+}
+
+function formatQuantity(value: number) {
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(value);
+}
+
+function unitLabel(product: MarketplaceKit) {
+  return product.product_type === "kit" ? "kit" : product.sale_unit;
 }
 
 function digits(value: string) {
@@ -108,7 +120,7 @@ function buildWhatsAppMessage(order: CreatedOrder, form: CheckoutForm) {
   const items = order.items
     .map(
       (item) =>
-        `• ${item.quantity}x ${item.kit_name} — ${currency(item.unit_price)} cada ( ${currency(item.line_total)} )`,
+        `• ${formatQuantity(item.quantity)} ${item.unit_label} · ${item.kit_name} — ${currency(item.unit_price)} / ${item.unit_label} ( ${currency(item.line_total)} )`,
     )
     .join("\n");
   const postalCode = digits(form.postalCode);
@@ -160,6 +172,7 @@ export default function MarketplaceStore() {
   const [checkoutForm, setCheckoutForm] = useState<CheckoutForm>(initialCheckoutForm);
   const [checkoutError, setCheckoutError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "kits" | "loose">("all");
 
   useEffect(() => {
     let active = true;
@@ -172,7 +185,7 @@ export default function MarketplaceStore() {
 
       const { data, error } = await supabase
         .from("marketplace_kits")
-        .select("id, name, description, contents, image_url, price, is_featured")
+        .select("id, name, description, contents, image_url, price, is_featured, product_type, sale_unit")
         .eq("is_active", true)
         .order("is_featured", { ascending: false })
         .order("display_order", { ascending: true })
@@ -205,6 +218,10 @@ export default function MarketplaceStore() {
     () => cart.reduce((total, item) => total + item.quantity, 0),
     [cart],
   );
+  const visibleProducts = useMemo(
+    () => kits.filter((product) => categoryFilter === "all" || product.product_type === (categoryFilter === "kits" ? "kit" : "loose")),
+    [categoryFilter, kits],
+  );
 
   function addToCart(kit: MarketplaceKit) {
     setCart((current) => {
@@ -212,7 +229,11 @@ export default function MarketplaceStore() {
       if (!existing) return [...current, { kit, quantity: 1 }];
       return current.map((item) =>
         item.kit.id === kit.id
-          ? { ...item, kit, quantity: Math.min(item.quantity + 1, 20) }
+          ? {
+              ...item,
+              kit,
+              quantity: Math.min(20, Math.round((item.quantity + (kit.sale_unit === "kg" ? 0.5 : 1)) * 1000) / 1000),
+            }
           : item,
       );
     });
@@ -225,7 +246,10 @@ export default function MarketplaceStore() {
       current
         .map((item) =>
           item.kit.id === kitId
-            ? { ...item, quantity: Math.min(20, item.quantity + delta) }
+              ? {
+                  ...item,
+                  quantity: Math.min(20, Math.round((item.quantity + delta) * 1000) / 1000),
+                }
             : item,
         )
         .filter((item) => item.quantity > 0),
@@ -243,7 +267,7 @@ export default function MarketplaceStore() {
     event.preventDefault();
     setCheckoutError("");
     if (!supabase || cart.length === 0) {
-      setCheckoutError("Adicione um kit ao pedido antes de continuar.");
+      setCheckoutError("Adicione produtos ou kits ao pedido antes de continuar.");
       return;
     }
     if (digits(checkoutForm.phone).length < 10 || digits(checkoutForm.phone).length > 15) {
@@ -279,7 +303,7 @@ export default function MarketplaceStore() {
     if (error) {
       setCheckoutError(
         error.code === "P0002"
-          ? "Um dos kits acabou de ficar indisponível. Atualize a página e tente novamente."
+          ? "Um dos produtos acabou de ficar indisponível. Atualize a página e tente novamente."
           : `Não foi possível registrar o pedido: ${error.message}`,
       );
       return;
@@ -296,14 +320,14 @@ export default function MarketplaceStore() {
   }
 
   return (
-    <section className="kit-store-section section-pad" id="kits">
+    <section className="kit-store-section section-pad reveal-on-scroll" id="kits">
       <div className="store-heading">
         <div>
-          <span className="section-kicker">Escolhas fresquinhas, feitas para você</span>
-          <h2>Seu próximo favorito<br /><span>vem em um kit.</span></h2>
+          <span className="section-kicker">Produtos fresquinhos, do seu jeito</span>
+          <h2>Monte sua feira<br /><span>como preferir.</span></h2>
         </div>
         <div className="store-heading-side">
-          <p>Monte seu pedido, informe onde entregar e finalize pelo WhatsApp.</p>
+          <p>Escolha produtos avulsos ou combine com kits prontos. Finalize pelo WhatsApp.</p>
           <button
             className="store-cart-button"
             type="button"
@@ -311,27 +335,45 @@ export default function MarketplaceStore() {
               setCheckoutError("");
               setCheckoutOpen(true);
             }}
-            aria-label={`Abrir pedido, ${cartQuantity} itens`}
+            aria-label={`Abrir pedido, ${formatQuantity(cartQuantity)} itens`}
           >
             <ShoppingBag size={17} /> Meu pedido
-            <span>{cartQuantity}</span>
+            <span>{formatQuantity(cartQuantity)}</span>
           </button>
         </div>
       </div>
 
+      <div className="store-category-tabs" role="group" aria-label="Filtrar produtos">
+        {([
+          ["all", "Tudo"],
+          ["loose", "Montar minha feira"],
+          ["kits", "Kits prontos"],
+        ] as const).map(([category, label]) => (
+          <button
+            key={category}
+            className={categoryFilter === category ? "store-category-tab active" : "store-category-tab"}
+            type="button"
+            aria-pressed={categoryFilter === category}
+            onClick={() => setCategoryFilter(category)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {!isSupabaseConfigured && (
         <div className="store-empty" role="status">
-          A loja está sendo preparada. Volte em breve para conhecer nossos kits.
+          A loja está sendo preparada. Volte em breve para montar sua feira.
         </div>
       )}
       {loadError && <div className="store-error" role="alert">{loadError}</div>}
       {loading ? (
-        <div className="store-loading"><LoaderCircle className="spin" size={20} /> Carregando kits...</div>
-      ) : kits.length ? (
+        <div className="store-loading"><LoaderCircle className="spin" size={20} /> Carregando produtos...</div>
+      ) : visibleProducts.length ? (
         <div className="store-grid">
-          {kits.map((kit, index) => (
+          {visibleProducts.map((kit, index) => (
             <article
-              className={`store-card${kit.is_featured ? " store-card-featured" : ""}`}
+              className={`store-card${kit.is_featured && kit.product_type === "kit" ? " store-card-featured" : ""}`}
               key={kit.id}
               style={{ animationDelay: `${Math.min(index, 6) * 70}ms` }}
             >
@@ -343,16 +385,17 @@ export default function MarketplaceStore() {
                     <span>🍊</span><span>🍌</span><span>🍓</span>
                   </div>
                 )}
-                {kit.is_featured && <span className="store-featured-badge">Mais pedido</span>}
+                {kit.is_featured && kit.product_type === "kit" && <span className="store-featured-badge">Mais pedido</span>}
+                {kit.product_type === "loose" && <span className="store-featured-badge">Avulso · {kit.sale_unit}</span>}
                 <span className="store-photo-mark"><ShoppingBag size={15} /></span>
               </div>
               <div className="store-card-content">
                 <div className="store-kit-title">
                   <h3>{kit.name}</h3>
-                  <strong>{currency(kit.price)}</strong>
+                  <strong>{currency(kit.price)} <small>/ {unitLabel(kit)}</small></strong>
                 </div>
                 <p>{kit.description}</p>
-                {kit.contents && (
+                {kit.product_type === "kit" && kit.contents && (
                   <div className="store-kit-contents">
                     <span>Vai no kit</span>
                     <p>{kit.contents}</p>
@@ -363,7 +406,7 @@ export default function MarketplaceStore() {
                   className="store-buy-button"
                   onClick={() => addToCart(kit)}
                 >
-                  Comprar este kit <ArrowRight size={17} />
+                  {kit.product_type === "kit" ? "Adicionar kit" : "Adicionar à feira"} <ArrowRight size={17} />
                 </button>
               </div>
             </article>
@@ -371,9 +414,9 @@ export default function MarketplaceStore() {
         </div>
       ) : !loadError && isSupabaseConfigured ? (
         <div className="store-empty">
-          {loading
-            ? "Carregando os kits..."
-            : "Estamos preparando os primeiros kits. Em breve você poderá pedir por aqui."}
+          {kits.length
+            ? "Ainda não há itens nesta categoria. Escolha outra opção para continuar."
+            : "Estamos preparando os primeiros produtos. Em breve você poderá montar sua feira por aqui."}
         </div>
       ) : null}
       <p className="store-footnote"><Check size={14} /> Pedido enviado pelo WhatsApp para confirmar entrega e pagamento.</p>
@@ -421,12 +464,12 @@ export default function MarketplaceStore() {
                       )}
                       <div className="checkout-item-info">
                         <strong>{kit.name}</strong>
-                        <span>{currency(kit.price)} cada</span>
+                        <span>{currency(kit.price)} / {unitLabel(kit)}</span>
                       </div>
-                      <div className="checkout-quantity" aria-label={`Quantidade de ${kit.name}`}>
-                        <button type="button" onClick={() => updateQuantity(kit.id, -1)} aria-label="Diminuir quantidade"><Minus size={13} /></button>
-                        <span>{quantity}</span>
-                        <button type="button" onClick={() => updateQuantity(kit.id, 1)} aria-label="Aumentar quantidade" disabled={quantity >= 20}><Plus size={13} /></button>
+                        <div className="checkout-quantity" aria-label={`Quantidade de ${kit.name}`}>
+                          <button type="button" onClick={() => updateQuantity(kit.id, kit.sale_unit === "kg" ? -0.5 : -1)} aria-label="Diminuir quantidade"><Minus size={13} /></button>
+                          <span>{formatQuantity(quantity)}</span>
+                          <button type="button" onClick={() => updateQuantity(kit.id, kit.sale_unit === "kg" ? 0.5 : 1)} aria-label="Aumentar quantidade" disabled={quantity >= 20}><Plus size={13} /></button>
                       </div>
                     </article>
                   ))}

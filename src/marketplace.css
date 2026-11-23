@@ -38,6 +38,27 @@
   line-height: 1.7;
 }
 
+.store-category-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: -12px 0 25px;
+}
+.store-category-tab {
+  min-height: 39px;
+  padding: 0 16px;
+  border: 1px solid #dfe5d6;
+  border-radius: 22px;
+  background: #fffdf9;
+  color: #42604c;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color .2s ease, background .2s ease, border-color .2s ease, transform .2s ease;
+}
+.store-category-tab:hover { transform: translateY(-2px); border-color: #b7c89e; }
+.store-category-tab.active { border-color: var(--orange); background: var(--orange); color: white; }
+
 .store-cart-button {
   min-height: 43px;
   padding: 0 12px;
@@ -180,6 +201,7 @@
   font: 800 17px "Manrope", sans-serif;
   white-space: nowrap;
 }
+.store-kit-title strong small { font: inherit; font-size: 9px; font-weight: 600; }
 
 .store-card-content > p {
   min-height: 39px;
@@ -658,7 +680,7 @@
 .marketplace-kit-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
 .marketplace-kit-field { display: flex; flex-direction: column; gap: 6px; color: #62675b; font-size: 9px; font-weight: 700; }
 .marketplace-kit-field.full { grid-column: 1 / -1; }
-.marketplace-kit-field input, .marketplace-kit-field textarea {
+.marketplace-kit-field input, .marketplace-kit-field textarea, .marketplace-kit-field select {
   width: 100%;
   min-height: 38px;
   padding: 9px 10px;
@@ -671,7 +693,7 @@
 }
 
 .marketplace-kit-field textarea { min-height: 68px; resize: vertical; line-height: 1.6; }
-.marketplace-kit-field input:focus, .marketplace-kit-field textarea:focus { border-color: #9daf61; box-shadow: 0 0 0 3px #dce99445; }
+.marketplace-kit-field input:focus, .marketplace-kit-field textarea:focus, .marketplace-kit-field select:focus { border-color: #9daf61; box-shadow: 0 0 0 3px #dce99445; }
 .marketplace-kit-image {
   min-height: 58px;
   padding: 8px 10px;
@@ -782,6 +804,8 @@
   .store-heading h2 { font-size: 39px; letter-spacing: -2px; }
   .store-heading-side { width: 100%; align-items: center; justify-content: space-between; gap: 10px; }
   .store-heading-side p { max-width: 205px; font-size: 10px; }
+  .store-category-tabs { gap: 7px; margin: -5px 0 19px; }
+  .store-category-tab { min-height: 36px; padding: 0 12px; font-size: 10px; }
   .store-cart-button { min-height: 39px; padding: 0 9px; gap: 6px; font-size: 9px; }
   .store-grid { grid-template-columns: 1fr; gap: 13px; }
   .store-card-photo { height: 190px; }

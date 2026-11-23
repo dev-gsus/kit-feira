@@ -1,14 +1,18 @@
 # Kit Feira
 
-Loja de kits de frutas com checkout e confirmação pelo WhatsApp, histórico de
-pedidos e custos de compra, painel administrativo e campanhas de sorteio.
+Loja de kits e produtos avulsos de feira com checkout e confirmação pelo
+WhatsApp, histórico de pedidos e custos de compra, painel administrativo e
+campanhas de sorteio.
 
 ## Preparar o Supabase
 
 1. Abra o SQL Editor do projeto e execute [`supabase/schema.sql`](./supabase/schema.sql).
-   O script cria as tabelas, políticas de acesso, funções de checkout e
-   comparação de preços e o bucket de fotos dos kits. Ele também atualiza o
-   esquema dos sorteios existente.
+   O script cria e atualiza as tabelas, políticas de acesso, funções de checkout
+   e comparação de preços e o bucket de fotos. Ele também atualiza o esquema dos
+   sorteios existente e prepara os pedidos para quantidades fracionadas por kg.
+   Se a loja já estava em uso, aplique também
+   [`supabase/migrations/20261123_marketplace_custom_fair.sql`](./supabase/migrations/20261123_marketplace_custom_fair.sql)
+   para habilitar produtos avulsos e atualizar os pedidos existentes.
 2. Em **Authentication → Users**, cadastre as contas que poderão administrar o painel.
    As contas existentes quando o esquema inicial foi instalado já foram
    autorizadas; novas contas precisam ser adicionadas manualmente:
@@ -25,11 +29,12 @@ pedidos e custos de compra, painel administrativo e campanhas de sorteio.
    publicar, adicione também o endereço do GitHub Pages à lista de URLs de
    redirecionamento permitidas.
 
-O painel não controla estoque. Cadastre kits com descrição, conteúdo, preço e
-foto na aba **Loja Kit Feira**. O checkout registra o pedido e os itens com os
-preços confirmados pelo banco antes de abrir o WhatsApp `11 97077-3006`; o
-status inicial fica como aguardando confirmação. Dados pessoais e endereço
-ficam visíveis apenas para administradores.
+O painel não controla estoque. Cadastre kits prontos ou produtos avulsos com
+descrição, unidade, preço e foto na aba **Loja Kit Feira**. O checkout registra
+o pedido e os itens com os preços confirmados pelo banco antes de abrir o
+WhatsApp `11 97077-3006`; o status inicial fica como aguardando confirmação.
+Produtos vendidos por kg aceitam quantidades de meio em meio quilo. Dados
+pessoais e endereço ficam visíveis apenas para administradores.
 
 Na aba **Custos de compra**, registre cada compra de fruta ou insumo com
 quantidade, unidade e total pago. O painel compara o preço por unidade com a

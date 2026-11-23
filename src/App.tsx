@@ -84,10 +84,7 @@ function formatDate(value: string) {
 function Brand() {
   return (
     <a className="brand" href="#inicio" aria-label="Kit Feira, início">
-      <span className="brand-feira">kit feira</span>
-      <span className="brand-switch" aria-label="on">
-        <span />
-      </span>
+      <img className="brand-logo" src="/kit-feira-logo.png" alt="Kit Feira — Na sua porta" />
     </a>
   );
 }
@@ -264,7 +261,30 @@ function PublicSite() {
     raffle && isSupabaseConfigured && !loadError && !raffleFull,
   );
 
+  useEffect(() => {
+    const elements = document.querySelectorAll<HTMLElement>(".reveal-on-scroll");
+    if (!("IntersectionObserver" in window)) {
+      elements.forEach((element) => element.classList.add("is-visible"));
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.12, rootMargin: "0px 0px -24px 0px" },
+    );
+    elements.forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, []);
+
   return (
+    <>
     <div className="site-shell" id="inicio">
       <header className="topbar">
         <div className="nav-wrap">
@@ -282,7 +302,7 @@ function PublicSite() {
           </button>
           <nav className={menuOpen ? "nav-links nav-open" : "nav-links"}>
             <a href="#kits" onClick={() => setMenuOpen(false)}>
-              Kits
+              Monte sua feira
             </a>
             <a href="#como-funciona" onClick={() => setMenuOpen(false)}>
               Como comprar
@@ -294,7 +314,7 @@ function PublicSite() {
               Login
             </a>
             <a className="nav-cta" href="#kits" onClick={() => setMenuOpen(false)}>
-              Escolher meu kit <ArrowRight size={16} />
+              Fazer meu pedido <ArrowRight size={16} />
             </a>
           </nav>
         </div>
@@ -302,22 +322,22 @@ function PublicSite() {
 
       <main>
         <section className="hero">
-          <div className="hero-content">
+          <div className="hero-content reveal-on-scroll">
             <div className="eyebrow"><span className="live-dot" /> Fresquinho do seu jeito</div>
             <h1>
               Sua feira,
               <br />
-              <span>em um kit</span> perfeito.
+              <span>do seu jeito.</span>
             </h1>
             <p className="hero-copy">
-              Escolha seus favoritos, receba em casa e resolva tudo em poucos passos pelo WhatsApp.
+              Monte sua feira escolhendo os produtos que quiser ou opte por um kit pronto. Receba em casa e confirme pelo WhatsApp.
             </p>
             <div className="hero-actions">
               <a className="button button-dark" href="#kits">
-                Conhecer os kits <ArrowRight size={17} />
+                Montar minha feira <ArrowRight size={17} />
               </a>
-              <a className="text-link" href="#como-funciona">
-                Como comprar <ArrowDown size={15} />
+              <a className="text-link" href="#kits">
+                Ver kits prontos <ArrowDown size={15} />
               </a>
             </div>
             <div className="hero-trust">
@@ -326,7 +346,7 @@ function PublicSite() {
             </div>
           </div>
 
-          <div className="hero-art" aria-label="Ilustração de uma banana sorridente">
+          <div className="hero-art reveal-on-scroll reveal-delay-1" aria-label="Ilustração de uma banana sorridente">
             <div className="art-sun" />
             <div className="art-star star-one">✳</div>
             <div className="art-star star-two">✦</div>
@@ -352,12 +372,12 @@ function PublicSite() {
             </div>
             <div className="art-note"><Sparkles size={15} /> fresquinho e preparado com carinho</div>
           </div>
-          <a className="scroll-cue" href="#kits" aria-label="Ver kits">
+          <a className="scroll-cue" href="#kits" aria-label="Ver produtos e kits">
             <span />
           </a>
         </section>
 
-        <section className="ticker" aria-label="Kit Feira">
+        <section className="ticker reveal-on-scroll" aria-label="Kit Feira">
           <div className="ticker-track">
             {[0, 1, 2, 3].map((item) => (
             <span key={item}>KIT FEIRA · FRESQUINHO TODO DIA <b>✳</b> SEU PEDIDO, DO SEU JEITO <b>✳</b></span>
@@ -367,7 +387,7 @@ function PublicSite() {
 
         <MarketplaceStore />
 
-        <section className="entry-section section-pad" id="inscricao">
+        <section className="entry-section section-pad reveal-on-scroll" id="inscricao">
           <div className="section-intro">
           <span className="section-kicker">Sorteios Kit Feira</span>
           <h2>Uma chance<br /><span>para comemorar.</span></h2>
@@ -541,7 +561,7 @@ function PublicSite() {
           </div>
         </section>
 
-        <section className="how-section section-pad" id="como-funciona">
+        <section className="how-section section-pad reveal-on-scroll" id="como-funciona">
           <div className="how-heading">
             <span className="section-kicker">Seu pedido em poucos passos</span>
             <h2>É fácil. É rápido.<br /><span>É Kit Feira.</span></h2>
@@ -550,8 +570,8 @@ function PublicSite() {
             <article className="step-card">
               <span className="step-number">01</span>
               <div className="step-icon"><ShoppingBag size={22} /></div>
-              <h3>Escolha seu kit</h3>
-              <p>Veja os detalhes, o que vem em cada opção e o valor antes de pedir.</p>
+              <h3>Monte ou escolha</h3>
+              <p>Combine produtos avulsos ou escolha um kit pronto, com preço visível antes de pedir.</p>
             </article>
             <article className="step-card">
               <span className="step-number">02</span>
@@ -568,7 +588,7 @@ function PublicSite() {
           </div>
         </section>
 
-        <section className="results-section section-pad" id="resultado">
+        <section className="results-section section-pad reveal-on-scroll" id="resultado">
           <div className="results-heading">
             <div>
               <span className="section-kicker">Campanhas e sorteios</span>
@@ -601,23 +621,34 @@ function PublicSite() {
           )}
         </section>
 
-        <section className="closing-cta">
+        <section className="closing-cta reveal-on-scroll">
           <div className="closing-spark">✳</div>
           <p>Fresquinho, especial e do seu jeito.</p>
-          <h2>Escolha seu kit<br /><span>favorito.</span></h2>
-          <a className="button button-dark" href="#kits">Ver kits disponíveis <ArrowRight size={17} /></a>
+          <h2>Monte sua feira<br /><span>do seu jeito.</span></h2>
+          <a className="button button-dark" href="#kits">Começar meu pedido <ArrowRight size={17} /></a>
           <div className="closing-banana">🍌</div>
         </section>
       </main>
 
       <footer className="footer">
         <Brand />
-        <span>Kits fresquinhos e pedidos preparados com carinho.</span>
+        <span>Produtos fresquinhos e pedidos preparados com carinho.</span>
         <a href="#inicio">Voltar ao topo <ChevronDown size={15} /></a>
         <a className="footer-admin-link" href={appPath("admin")}>Login</a>
         <small>© {new Date().getFullYear()} Kit Feira. Fresquinho do seu jeito.</small>
       </footer>
     </div>
+    <a
+      className="whatsapp-float"
+      href="https://wa.me/5511970773006?text=Ol%C3%A1%21%20Quero%20saber%20mais%20sobre%20a%20feira."
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Fale com o Kit Feira pelo WhatsApp"
+    >
+      <MessageCircle size={25} aria-hidden="true" />
+      <span>Fale com a gente</span>
+    </a>
+    </>
   );
 }
 
