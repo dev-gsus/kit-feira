@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   ArrowDownRight,
+  ArrowLeft,
   ArrowRight,
   Check,
   CircleAlert,
@@ -235,6 +236,7 @@ export default function MarketplaceAdmin({
   const [notice, setNotice] = useState("");
   const [kitForm, setKitForm] = useState<KitForm>(emptyKitForm);
   const [editingKitId, setEditingKitId] = useState<string | null>(null);
+  const [isProductEditorOpen, setIsProductEditorOpen] = useState(false);
   const [kitImage, setKitImage] = useState<File | null>(null);
   const [costForm, setCostForm] = useState<CostForm>(emptyCostForm);
   const [costComparison, setCostComparison] = useState<CostComparison | null>(null);
@@ -350,6 +352,7 @@ export default function MarketplaceAdmin({
     setKitImage(null);
     setNotice("");
     setError("");
+    setIsProductEditorOpen(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -357,7 +360,19 @@ export default function MarketplaceAdmin({
     setEditingKitId(null);
     setKitForm(emptyKitForm());
     setKitImage(null);
+    setError("");
     setNotice("");
+    setIsProductEditorOpen(false);
+  }
+
+  function startNewProduct() {
+    setEditingKitId(null);
+    setKitForm(emptyKitForm());
+    setKitImage(null);
+    setError("");
+    setNotice("");
+    setIsProductEditorOpen(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function saveKit(event: FormEvent<HTMLFormElement>) {
@@ -429,6 +444,7 @@ export default function MarketplaceAdmin({
     setEditingKitId(null);
     setKitForm(emptyKitForm());
     setKitImage(null);
+    setIsProductEditorOpen(false);
     await loadData();
   }
 
@@ -511,33 +527,43 @@ export default function MarketplaceAdmin({
 
   return (
     <section className={compact ? "marketplace-admin marketplace-admin-compact" : "marketplace-admin"}>
-      {!compact && (
+      {!compact && isProductEditorOpen && (
+        <div className="marketplace-product-page-heading">
+          <button className="marketplace-product-back" type="button" onClick={cancelKitEdit}>
+            <ArrowLeft size={16} /> Voltar aos produtos
+          </button>
+          <div>
+            <span className="admin-kicker">{editingKitId ? "EDIÇÃO DE PRODUTO" : "NOVO CADASTRO"}</span>
+            <h1>{editingKitId ? "Editar produto" : "Cadastrar produto ou kit"}</h1>
+            <p>Preencha as informações que seus clientes verão na loja.</p>
+          </div>
+        </div>
+      )}
+
+      {!compact && !isProductEditorOpen && (
         <div className="admin-page-heading">
           <div>
             <span className="admin-kicker">LOJA E OPERAÇÃO</span>
             <h1>Marketplace Kit Feira</h1>
-            <p>Cadastre seus kits, acompanhe pedidos e compare os preços de compra dos insumos.</p>
+            <p>Cadastre produtos e kits, acompanhe pedidos e compare os preços de compra dos insumos.</p>
           </div>
           {section === "kits" && (
             <button
               className="button button-dark"
               type="button"
-              onClick={() => {
-                cancelKitEdit();
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
+              onClick={startNewProduct}
             >
-              <Plus size={16} /> Novo kit
+              <Plus size={16} /> Novo produto
             </button>
           )}
         </div>
       )}
 
-      {!compact && (
+      {!compact && !isProductEditorOpen && (
         <div className="marketplace-admin-tabs" role="tablist" aria-label="Seções da loja">
           {([
             ["overview", "Visão geral"],
-            ["kits", "Kits"],
+            ["kits", "Produtos"],
             ["orders", "Pedidos"],
             ["costs", "Custos de compra"],
           ] as const).map(([id, label]) => (
@@ -567,7 +593,7 @@ export default function MarketplaceAdmin({
         <div>
           <div className="marketplace-admin-stats">
             <article className="marketplace-admin-stat" style={{ animationDelay: "0ms" }}>
-              <i><ShoppingBag size={16} /></i><small>KITS PUBLICADOS</small>
+              <i><ShoppingBag size={16} /></i><small>ITENS PUBLICADOS</small>
               <strong>{summary?.active_kits ?? 0}</strong><span>disponíveis na loja</span>
             </article>
             <article className="marketplace-admin-stat" style={{ animationDelay: "60ms" }}>
@@ -625,113 +651,151 @@ export default function MarketplaceAdmin({
 
       {section === "kits" && (
         <div>
-          <form className="marketplace-kit-editor" onSubmit={(event) => void saveKit(event)}>
-            <h2>{editingKitId ? "Editar produto" : "Cadastrar produto para a loja"}</h2>
-            <div className="marketplace-kit-fields">
-              <label className="marketplace-kit-field">
-                Tipo de produto *
-                <select
-                  value={kitForm.product_type}
-                  onChange={(event) => {
-                    const productType = event.target.value === "loose" ? "loose" : "kit";
-                    updateKitForm("product_type", productType);
-                    updateKitForm("sale_unit", productType === "kit" ? "kit" : "kg");
-                  }}
-                >
-                  <option value="kit">Kit pronto</option>
-                  <option value="loose">Produto avulso</option>
-                </select>
-              </label>
-              <label className="marketplace-kit-field">
-                {kitForm.product_type === "kit" ? "Nome do kit *" : "Nome do produto *"}
-                <input value={kitForm.name} onChange={(event) => updateKitForm("name", event.target.value)} maxLength={120} placeholder={kitForm.product_type === "kit" ? "Ex.: Kit Tropical" : "Ex.: Banana prata"} required />
-              </label>
-              <label className="marketplace-kit-field">
-                {kitForm.product_type === "kit" ? "Valor do kit (R$) *" : `Preço por ${kitForm.sale_unit} (R$) *`}
-                <input type="number" min="0" step="0.01" value={kitForm.price} onChange={(event) => updateKitForm("price", event.target.value)} placeholder="0,00" required />
-              </label>
-              <label className="marketplace-kit-field full">
-                Descrição *
-                <textarea value={kitForm.description} onChange={(event) => updateKitForm("description", event.target.value)} maxLength={700} placeholder={kitForm.product_type === "kit" ? "Conte o que torna este kit especial." : "Descreva este produto."} required />
-              </label>
-              {kitForm.product_type === "kit" ? (
-                <label className="marketplace-kit-field full">
-                  O que vem no kit
-                  <textarea value={kitForm.contents} onChange={(event) => updateKitForm("contents", event.target.value)} maxLength={700} placeholder="Ex.: banana, laranja, maçã e frutas da estação." />
-                </label>
-              ) : (
-                <label className="marketplace-kit-field">
-                  Unidade de venda *
-                  <select value={kitForm.sale_unit} onChange={(event) => updateKitForm("sale_unit", event.target.value)}>
-                    <option value="kg">Quilo (kg)</option>
-                    <option value="unidade">Unidade</option>
-                    <option value="dúzia">Dúzia</option>
-                    <option value="bandeja">Bandeja</option>
-                    <option value="maço">Maço</option>
-                  </select>
-                </label>
-              )}
-              <div className="marketplace-kit-field full">
-                Foto do kit
-                <label className="marketplace-kit-image">
-                  <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setKitImage(event.target.files?.[0] ?? null)} />
-                  {kitImage ? (
-                    <><ImagePlus size={18} /><span>{kitImage.name}</span></>
-                  ) : editingKitId && kits.find((kit) => kit.id === editingKitId)?.image_url ? (
-                    <><img src={kits.find((kit) => kit.id === editingKitId)?.image_url ?? ""} alt="" /><span>Foto atual · clique para trocar</span></>
-                  ) : (
-                    <><ImagePlus size={18} /><span>Escolha uma foto JPG, PNG ou WEBP · até 5 MB</span></>
-                  )}
-                </label>
+          {isProductEditorOpen ? (
+            <form className="marketplace-kit-editor marketplace-product-form" onSubmit={(event) => void saveKit(event)}>
+              <div className="marketplace-product-step">
+                <span className="marketplace-product-step-label">ETAPA 1 · TIPO DE ITEM</span>
+                <h2>O que você vai vender?</h2>
+                <p>Escolha um kit pronto ou cadastre um produto para a feira avulsa.</p>
+                <div className="marketplace-product-type-choices" role="group" aria-label="Tipo de item">
+                  <button
+                    className={kitForm.product_type === "kit" ? "marketplace-product-type-button selected" : "marketplace-product-type-button"}
+                    type="button"
+                    aria-pressed={kitForm.product_type === "kit"}
+                    onClick={() => {
+                      updateKitForm("product_type", "kit");
+                      updateKitForm("sale_unit", "kit");
+                    }}
+                  >
+                    <ShoppingBag size={21} />
+                    <span><strong>Kit pronto</strong><small>Um conjunto de produtos com preço fechado.</small></span>
+                  </button>
+                  <button
+                    className={kitForm.product_type === "loose" ? "marketplace-product-type-button selected" : "marketplace-product-type-button"}
+                    type="button"
+                    aria-pressed={kitForm.product_type === "loose"}
+                    onClick={() => {
+                      updateKitForm("product_type", "loose");
+                      updateKitForm("sale_unit", "kg");
+                      updateKitForm("is_featured", false);
+                    }}
+                  >
+                    <Plus size={21} />
+                    <span><strong>Produto avulso</strong><small>Um item vendido por quilo, unidade ou pacote.</small></span>
+                  </button>
+                </div>
               </div>
-              <label className="marketplace-kit-field">
-                Ordem de exibição
-                <input type="number" step="1" value={kitForm.display_order} onChange={(event) => updateKitForm("display_order", event.target.value)} />
-              </label>
-            </div>
-            <div className="marketplace-kit-options">
-              <label><input type="checkbox" checked={kitForm.is_active} onChange={(event) => updateKitForm("is_active", event.target.checked)} /> Publicado na loja</label>
-              {kitForm.product_type === "kit" && <label><input type="checkbox" checked={kitForm.is_featured} onChange={(event) => updateKitForm("is_featured", event.target.checked)} /> Destacar como mais pedido</label>}
-            </div>
-            <div className="marketplace-kit-editor-actions">
-              {editingKitId && <button className="admin-secondary-button" type="button" onClick={cancelKitEdit}>Cancelar</button>}
-              <button className="button button-dark" type="submit" disabled={saving}>
-                {saving ? <><LoaderCircle className="spin" size={15} /> Salvando...</> : <>{editingKitId ? "Salvar alterações" : "Publicar produto"} <ArrowRight size={15} /></>}
-              </button>
-            </div>
-          </form>
 
-          <div className="marketplace-admin-toolbar">
-            <div><h2>Produtos cadastrados</h2><p>Ocultar um produto mantém seu histórico de pedidos.</p></div>
-          </div>
-          {kits.length ? (
-            <div className="marketplace-admin-table-wrap">
-              <table className="marketplace-admin-table">
-                <thead><tr><th>Produto</th><th>Tipo</th><th>Valor</th><th>Ordem</th><th>Status</th><th>Ações</th></tr></thead>
-                <tbody>
-                  {kits.map((kit) => (
-                    <tr key={kit.id}>
-                      <td>
-                        {kit.image_url && <img src={kit.image_url} alt="" />}
-                        <strong>{kit.name}</strong>
-                        {kit.is_featured && <small>Em destaque</small>}
-                      </td>
-                      <td>{kit.product_type === "kit" ? "Kit pronto" : `Avulso · ${kit.sale_unit}`}</td>
-                      <td>{currency(kit.price)}{kit.product_type === "loose" ? ` / ${kit.sale_unit}` : ""}</td>
-                      <td>{kit.display_order}</td>
-                      <td>{kit.is_active ? "Publicado" : "Oculto"}</td>
-                      <td>
-                        <button className="icon-button" type="button" onClick={() => editKit(kit)} aria-label={`Editar ${kit.name}`}><Pencil size={14} /></button>
-                        <button className="admin-secondary-button" type="button" onClick={() => void toggleKit(kit)}>{kit.is_active ? "Ocultar" : "Publicar"}</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : !loading ? (
-            <div className="marketplace-admin-empty">Cadastre seu primeiro kit ou produto avulso. Ele aparecerá na loja assim que for publicado.</div>
-          ) : null}
+              <div className="marketplace-product-step">
+                <span className="marketplace-product-step-label">ETAPA 2 · INFORMAÇÕES</span>
+                <h2>Conte os detalhes</h2>
+                <p>Essas informações ajudam o cliente a escolher o que levar.</p>
+                <div className="marketplace-kit-fields">
+                  <label className="marketplace-kit-field">
+                    {kitForm.product_type === "kit" ? "Nome do kit *" : "Nome do produto *"}
+                    <input value={kitForm.name} onChange={(event) => updateKitForm("name", event.target.value)} maxLength={120} placeholder={kitForm.product_type === "kit" ? "Ex.: Kit Tropical" : "Ex.: Banana prata"} required />
+                  </label>
+                  <label className="marketplace-kit-field">
+                    {kitForm.product_type === "kit" ? "Preço do kit (R$) *" : `Preço por ${kitForm.sale_unit} (R$) *`}
+                    <input type="number" min="0" step="0.01" value={kitForm.price} onChange={(event) => updateKitForm("price", event.target.value)} placeholder="0,00" required />
+                    {kitForm.product_type === "loose" && <small className="marketplace-product-field-help">O preço será calculado pela quantidade escolhida pelo cliente.</small>}
+                  </label>
+                  <label className="marketplace-kit-field full">
+                    Descrição *
+                    <textarea value={kitForm.description} onChange={(event) => updateKitForm("description", event.target.value)} maxLength={700} placeholder={kitForm.product_type === "kit" ? "Conte o que torna este kit especial." : "Descreva este produto."} required />
+                  </label>
+                  {kitForm.product_type === "kit" ? (
+                    <label className="marketplace-kit-field full">
+                      O que vem no kit
+                      <textarea value={kitForm.contents} onChange={(event) => updateKitForm("contents", event.target.value)} maxLength={700} placeholder="Ex.: banana, laranja, maçã e frutas da estação." />
+                    </label>
+                  ) : (
+                    <label className="marketplace-kit-field">
+                      Unidade de venda *
+                      <select value={kitForm.sale_unit} onChange={(event) => updateKitForm("sale_unit", event.target.value)}>
+                        <option value="kg">Quilo (kg)</option>
+                        <option value="unidade">Unidade</option>
+                        <option value="dúzia">Dúzia</option>
+                        <option value="bandeja">Bandeja</option>
+                        <option value="maço">Maço</option>
+                      </select>
+                    </label>
+                  )}
+                  <div className="marketplace-kit-field full">
+                    Foto do produto <span className="marketplace-product-optional">(opcional)</span>
+                    <label className="marketplace-kit-image">
+                      <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setKitImage(event.target.files?.[0] ?? null)} />
+                      {kitImage ? (
+                        <><ImagePlus size={20} /><span><strong>{kitImage.name}</strong><small>Clique para escolher outra foto</small></span></>
+                      ) : editingKitId && kits.find((kit) => kit.id === editingKitId)?.image_url ? (
+                        <><img src={kits.find((kit) => kit.id === editingKitId)?.image_url ?? ""} alt="" /><span><strong>Foto atual</strong><small>Clique para trocar · JPG, PNG ou WEBP até 5 MB</small></span></>
+                      ) : (
+                        <><ImagePlus size={20} /><span><strong>Adicionar foto</strong><small>JPG, PNG ou WEBP · até 5 MB</small></span></>
+                      )}
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <details className="marketplace-product-advanced">
+                <summary>Opções avançadas</summary>
+                <label className="marketplace-kit-field">
+                  Ordem de exibição
+                  <input type="number" step="1" value={kitForm.display_order} onChange={(event) => updateKitForm("display_order", event.target.value)} />
+                </label>
+              </details>
+
+              <div className="marketplace-product-publish">
+                <div><strong>Disponibilidade na loja</strong><small>Você pode ocultar este item sem perder o histórico de pedidos.</small></div>
+                <label><input type="checkbox" checked={kitForm.is_active} onChange={(event) => updateKitForm("is_active", event.target.checked)} /> Publicar na loja</label>
+                {kitForm.product_type === "kit" && <label><input type="checkbox" checked={kitForm.is_featured} onChange={(event) => updateKitForm("is_featured", event.target.checked)} /> Destacar como mais pedido</label>}
+              </div>
+
+              <div className="marketplace-kit-editor-actions">
+                <button className="admin-secondary-button" type="button" onClick={cancelKitEdit}>Cancelar</button>
+                <button className="button button-dark" type="submit" disabled={saving}>
+                  {saving ? <><LoaderCircle className="spin" size={15} /> Salvando...</> : <>{editingKitId ? "Salvar alterações" : "Publicar produto"} <ArrowRight size={15} /></>}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <div className="marketplace-admin-toolbar">
+                <div><h2>Produtos e kits cadastrados</h2><p>Ocultar um produto mantém seu histórico de pedidos.</p></div>
+              </div>
+              {kits.length ? (
+                <div className="marketplace-admin-table-wrap">
+                  <table className="marketplace-admin-table">
+                    <thead><tr><th>Produto</th><th>Tipo</th><th>Valor</th><th>Ordem</th><th>Status</th><th>Ações</th></tr></thead>
+                    <tbody>
+                      {kits.map((kit) => (
+                        <tr key={kit.id}>
+                          <td>
+                            {kit.image_url && <img src={kit.image_url} alt="" />}
+                            <strong>{kit.name}</strong>
+                            {kit.is_featured && <small>Em destaque</small>}
+                          </td>
+                          <td>{kit.product_type === "kit" ? "Kit pronto" : `Avulso · ${kit.sale_unit}`}</td>
+                          <td>{currency(kit.price)}{kit.product_type === "loose" ? ` / ${kit.sale_unit}` : ""}</td>
+                          <td>{kit.display_order}</td>
+                          <td>{kit.is_active ? "Publicado" : "Oculto"}</td>
+                          <td>
+                            <button className="icon-button" type="button" onClick={() => editKit(kit)} aria-label={`Editar ${kit.name}`}><Pencil size={14} /></button>
+                            <button className="admin-secondary-button" type="button" onClick={() => void toggleKit(kit)}>{kit.is_active ? "Ocultar" : "Publicar"}</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : !loading ? (
+                <div className="marketplace-admin-empty marketplace-product-empty">
+                  <span>Seus produtos e kits aparecerão aqui após o cadastro.</span>
+                  <button className="button button-dark" type="button" onClick={startNewProduct}><Plus size={15} /> Cadastrar o primeiro item</button>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       )}
 

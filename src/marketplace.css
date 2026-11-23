@@ -715,6 +715,50 @@
 .marketplace-kit-options input { accent-color: #7e9647; }
 .marketplace-kit-editor-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 16px; }
 .marketplace-kit-editor-actions .button { min-height: 39px; font-size: 10px; }
+.marketplace-product-page-heading { display: flex; align-items: flex-start; gap: 20px; margin: 0 0 22px; }
+.marketplace-product-page-heading > div { padding-top: 1px; }
+.marketplace-product-page-heading h1 { margin: 7px 0 5px; color: #343a30; font: 800 clamp(23px, 3vw, 31px) "Manrope", sans-serif; letter-spacing: -1px; }
+.marketplace-product-page-heading p { margin: 0; color: #85897e; font-size: 12px; }
+.marketplace-product-back { min-height: 38px; padding: 0 12px; border: 1px solid #e6e8df; border-radius: 8px; background: white; color: #56624c; display: inline-flex; align-items: center; gap: 7px; font: 600 11px "DM Sans", sans-serif; cursor: pointer; }
+.marketplace-kit-editor.marketplace-product-form { max-width: 860px; margin: 0 auto 30px; padding: 27px; border-radius: 16px; box-shadow: 0 12px 35px #3447350a; }
+.marketplace-product-step + .marketplace-product-step { margin-top: 28px; padding-top: 26px; border-top: 1px solid #eef0e9; }
+.marketplace-product-step-label { color: #839553; font-size: 10px; font-weight: 800; letter-spacing: 1px; }
+.marketplace-product-step h2 { margin: 7px 0 5px; font-size: 19px; }
+.marketplace-product-step > p { margin: 0 0 18px; color: #85897e; font-size: 12px; line-height: 1.6; }
+.marketplace-product-type-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.marketplace-product-type-button { min-height: 92px; padding: 16px; border: 1px solid #e7e9e1; border-radius: 11px; background: #fff; color: #80904d; display: flex; align-items: flex-start; gap: 13px; text-align: left; cursor: pointer; transition: border-color .2s, background .2s, transform .2s; }
+.marketplace-product-type-button:hover { border-color: #bccb8a; transform: translateY(-2px); }
+.marketplace-product-type-button.selected { border-color: #899e53; background: #f5f8eb; box-shadow: 0 0 0 2px #899e5317; }
+.marketplace-product-type-button > svg { flex: 0 0 auto; margin-top: 2px; }
+.marketplace-product-type-button > span { display: flex; flex-direction: column; gap: 5px; }
+.marketplace-product-type-button strong { color: #3d4837; font: 700 13px "Manrope", sans-serif; }
+.marketplace-product-type-button small { color: #85897e; font-size: 11px; line-height: 1.45; }
+.marketplace-product-form .marketplace-kit-fields { gap: 16px; }
+.marketplace-product-form .marketplace-kit-field { gap: 7px; color: #4f5849; font-size: 12px; }
+.marketplace-product-form .marketplace-kit-field input,
+.marketplace-product-form .marketplace-kit-field textarea,
+.marketplace-product-form .marketplace-kit-field select { min-height: 46px; padding: 11px 12px; border-radius: 9px; font-size: 13px; }
+.marketplace-product-form .marketplace-kit-field textarea { min-height: 92px; }
+.marketplace-product-field-help { color: #8b8f83; font-size: 10px; font-weight: 400; line-height: 1.5; }
+.marketplace-product-optional { color: #999d91; font-size: 10px; font-weight: 400; }
+.marketplace-product-form .marketplace-kit-image { min-height: 74px; padding: 11px 13px; gap: 12px; }
+.marketplace-product-form .marketplace-kit-image > svg { flex: 0 0 auto; }
+.marketplace-product-form .marketplace-kit-image span { display: flex; flex-direction: column; gap: 4px; }
+.marketplace-product-form .marketplace-kit-image span strong { color: #4e5e3d; font-size: 12px; }
+.marketplace-product-form .marketplace-kit-image span small { color: #8a8e82; font-size: 10px; font-weight: 400; }
+.marketplace-product-advanced { margin-top: 22px; padding: 14px 0; border-top: 1px solid #eef0e9; border-bottom: 1px solid #eef0e9; }
+.marketplace-product-advanced summary { color: #65704f; font-size: 11px; font-weight: 700; cursor: pointer; }
+.marketplace-product-advanced .marketplace-kit-field { max-width: 240px; margin-top: 14px; }
+.marketplace-product-publish { margin-top: 20px; padding: 15px; border-radius: 10px; background: #f8f9f4; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px; }
+.marketplace-product-publish > div { flex: 1 1 100%; display: flex; flex-direction: column; gap: 4px; }
+.marketplace-product-publish > div strong { color: #424a3d; font: 700 12px "Manrope", sans-serif; }
+.marketplace-product-publish > div small { color: #898d82; font-size: 10px; line-height: 1.5; }
+.marketplace-product-publish label { display: inline-flex; align-items: center; gap: 7px; color: #5c6553; font-size: 11px; }
+.marketplace-product-publish input { accent-color: #7e9647; }
+.marketplace-product-form .marketplace-kit-editor-actions { margin-top: 22px; }
+.marketplace-product-form .marketplace-kit-editor-actions .button { min-height: 46px; padding: 0 18px; font-size: 12px; }
+.marketplace-product-empty { gap: 14px; }
+.marketplace-product-empty .button { min-height: 40px; padding: 0 15px; font-size: 11px; }
 .marketplace-admin-error { margin: 0 0 14px; padding: 10px 12px; border-radius: 8px; background: #fbefec; color: #934e3d; font-size: 10px; line-height: 1.5; }
 .marketplace-admin-success { margin: 0 0 14px; padding: 10px 12px; border-radius: 8px; background: #edf4dd; color: #4a6539; font-size: 10px; line-height: 1.5; }
 .marketplace-admin-empty { min-height: 110px; padding: 20px; border: 1px dashed #d9dccd; border-radius: 10px; background: white; color: #868a7e; display: grid; place-items: center; text-align: center; font-size: 10px; line-height: 1.6; }
@@ -828,6 +872,17 @@
   .marketplace-kit-editor { padding: 15px 12px; }
   .marketplace-kit-fields { grid-template-columns: 1fr; gap: 11px; }
   .marketplace-kit-field.full { grid-column: auto; }
+  .marketplace-product-page-heading { flex-direction: column; gap: 13px; }
+  .marketplace-product-page-heading h1 { font-size: 25px; }
+  .marketplace-kit-editor.marketplace-product-form { padding: 20px 15px; }
+  .marketplace-product-type-choices { grid-template-columns: 1fr; gap: 9px; }
+  .marketplace-product-type-button { min-height: 78px; padding: 13px; }
+  .marketplace-product-form .marketplace-kit-fields { grid-template-columns: 1fr; gap: 12px; }
+  .marketplace-product-form .marketplace-kit-field.full { grid-column: auto; }
+  .marketplace-product-publish { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .marketplace-product-form .marketplace-kit-editor-actions { flex-direction: column-reverse; }
+  .marketplace-product-form .marketplace-kit-editor-actions button { width: 100%; justify-content: center; }
+  .marketplace-product-empty .button { max-width: 100%; }
   .market-cost-fields { grid-template-columns: 1fr 1fr; gap: 9px; }
   .market-cost-field.full { grid-column: 1 / -1; }
   .market-cost-form { padding: 15px 12px; }

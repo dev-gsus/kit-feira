@@ -637,6 +637,7 @@ function PublicSite() {
         <a href="#inicio">Voltar ao topo <ChevronDown size={15} /></a>
         <a className="footer-admin-link" href={appPath("admin")}>Login</a>
         <small>© {new Date().getFullYear()} Kit Feira. Fresquinho do seu jeito.</small>
+        <small className="developer-credit">Desenvolvido por <a href="https://github.com/dev-gsus" target="_blank" rel="noreferrer">dev-gsus</a></small>
       </footer>
     </div>
     <a
