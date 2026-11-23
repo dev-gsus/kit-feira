@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   Check,
@@ -7,9 +7,11 @@ import {
   MapPin,
   Minus,
   Plus,
+  Search,
   ShoppingBag,
   X,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import "./marketplace.css";
 
@@ -94,6 +96,10 @@ function formatQuantity(value: number) {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(value);
 }
 
+function normalizeSearchText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+}
+
 function unitLabel(product: MarketplaceKit) {
   return product.product_type === "kit" ? "kit" : product.sale_unit;
 }
@@ -173,6 +179,11 @@ export default function MarketplaceStore() {
   const [checkoutError, setCheckoutError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<"all" | "kits" | "loose">("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isCartFloating, setIsCartFloating] = useState(false);
+  const storeSectionRef = useRef<HTMLElement>(null);
+  const cartAnchorRef = useRef<HTMLDivElement>(null);
+  const floatingCartRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -210,6 +221,65 @@ export default function MarketplaceStore() {
     };
   }, []);
 
+  useEffect(() => {
+    const originalCart = cartAnchorRef.current?.querySelector("button");
+    const floatingCart = floatingCartRef.current;
+    if (isCartFloating && document.activeElement === originalCart) {
+      floatingCart?.focus({ preventScroll: true });
+    } else if (!isCartFloating && document.activeElement === floatingCart) {
+      originalCart?.focus({ preventScroll: true });
+    }
+  }, [isCartFloating]);
+
+  useEffect(() => {
+    let animationFrame = 0;
+    const cartAnchor = cartAnchorRef.current;
+    if (!cartAnchor) return;
+
+    function updateFloatingCart() {
+      animationFrame = 0;
+      const storeSection = storeSectionRef.current;
+      const currentCartAnchor = cartAnchorRef.current;
+      if (!storeSection || !currentCartAnchor) return;
+      const anchorBounds = currentCartAnchor.getBoundingClientRect();
+      const sectionBounds = storeSection.getBoundingClientRect();
+      const floating =
+        anchorBounds.top < 16 &&
+        sectionBounds.bottom > 16 + anchorBounds.height;
+      setIsCartFloating((current) => current === floating ? current : floating);
+    }
+
+    const observer = "IntersectionObserver" in window
+      ? new IntersectionObserver(([entry]) => {
+          const currentSection = storeSectionRef.current;
+          if (!currentSection) return;
+          const sectionBounds = currentSection.getBoundingClientRect();
+          const passedAnchor =
+            !entry.isIntersecting && entry.boundingClientRect.bottom <= 16;
+          const floating =
+            passedAnchor &&
+            sectionBounds.bottom > 16 + entry.boundingClientRect.height;
+          setIsCartFloating((current) => current === floating ? current : floating);
+        }, { rootMargin: "-16px 0px 0px 0px" })
+      : null;
+    observer?.observe(cartAnchor);
+
+    function schedulePositionUpdate() {
+      if (animationFrame) return;
+      animationFrame = window.requestAnimationFrame(updateFloatingCart);
+    }
+
+    schedulePositionUpdate();
+    window.addEventListener("scroll", schedulePositionUpdate, { passive: true });
+    window.addEventListener("resize", schedulePositionUpdate);
+    return () => {
+      window.removeEventListener("scroll", schedulePositionUpdate);
+      window.removeEventListener("resize", schedulePositionUpdate);
+      observer?.disconnect();
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+    };
+  }, []);
+
   const cartTotal = useMemo(
     () => cart.reduce((total, item) => total + item.kit.price * item.quantity, 0),
     [cart],
@@ -218,9 +288,19 @@ export default function MarketplaceStore() {
     () => cart.reduce((total, item) => total + item.quantity, 0),
     [cart],
   );
+  const normalizedSearchTerm = normalizeSearchText(searchTerm.trim());
   const visibleProducts = useMemo(
-    () => kits.filter((product) => categoryFilter === "all" || product.product_type === (categoryFilter === "kits" ? "kit" : "loose")),
-    [categoryFilter, kits],
+    () => kits.filter((product) => {
+      const matchesCategory =
+        categoryFilter === "all" ||
+        product.product_type === (categoryFilter === "kits" ? "kit" : "loose");
+      const matchesSearch =
+        !normalizedSearchTerm ||
+        [product.name, product.description, product.contents, product.sale_unit]
+          .some((value) => normalizeSearchText(value).includes(normalizedSearchTerm));
+      return matchesCategory && matchesSearch;
+    }),
+    [categoryFilter, kits, normalizedSearchTerm],
   );
 
   function addToCart(kit: MarketplaceKit) {
@@ -261,6 +341,11 @@ export default function MarketplaceStore() {
     value: CheckoutForm[K],
   ) {
     setCheckoutForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function openCheckout() {
+    setCheckoutError("");
+    setCheckoutOpen(true);
   }
 
   async function submitCheckout(event: FormEvent<HTMLFormElement>) {
@@ -320,7 +405,7 @@ export default function MarketplaceStore() {
   }
 
   return (
-    <section className="kit-store-section section-pad reveal-on-scroll" id="kits">
+    <section ref={storeSectionRef} className="kit-store-section section-pad reveal-on-scroll" id="kits">
       <div className="store-heading">
         <div>
           <span className="section-kicker">Produtos fresquinhos, do seu jeito</span>
@@ -328,37 +413,68 @@ export default function MarketplaceStore() {
         </div>
         <div className="store-heading-side">
           <p>Escolha produtos avulsos ou combine com kits prontos. Finalize pelo WhatsApp.</p>
-          <button
-            className="store-cart-button"
-            type="button"
-            onClick={() => {
-              setCheckoutError("");
-              setCheckoutOpen(true);
-            }}
-            aria-label={`Abrir pedido, ${formatQuantity(cartQuantity)} itens`}
-          >
-            <ShoppingBag size={17} /> Meu pedido
-            <span>{formatQuantity(cartQuantity)}</span>
-          </button>
         </div>
       </div>
 
-      <div className="store-category-tabs" role="group" aria-label="Filtrar produtos">
-        {([
-          ["all", "Tudo"],
-          ["loose", "Montar minha feira"],
-          ["kits", "Kits prontos"],
-        ] as const).map(([category, label]) => (
-          <button
-            key={category}
-            className={categoryFilter === category ? "store-category-tab active" : "store-category-tab"}
-            type="button"
-            aria-pressed={categoryFilter === category}
-            onClick={() => setCategoryFilter(category)}
-          >
-            {label}
-          </button>
-        ))}
+      <div ref={cartAnchorRef} className="store-cart-anchor">
+        <button
+          className={isCartFloating ? "store-cart-button store-cart-button-placeholder" : "store-cart-button"}
+          type="button"
+          onClick={openCheckout}
+          aria-label={`Abrir pedido, ${formatQuantity(cartQuantity)} itens`}
+        >
+          <ShoppingBag size={17} /> Meu pedido
+          <span>{formatQuantity(cartQuantity)}</span>
+        </button>
+      </div>
+
+      {isCartFloating && createPortal(
+        <button
+          ref={floatingCartRef}
+          className="store-cart-button store-cart-floating"
+          type="button"
+          onClick={openCheckout}
+          aria-label={`Abrir pedido, ${formatQuantity(cartQuantity)} itens`}
+        >
+          <ShoppingBag size={17} /> Meu pedido
+          <span>{formatQuantity(cartQuantity)}</span>
+        </button>,
+        document.body,
+      )}
+
+      <div className={isCartFloating ? "store-products-toolbar cart-floating-active" : "store-products-toolbar"}>
+        <div className="store-search" role="search" aria-label="Buscar no marketplace">
+          <Search size={18} aria-hidden="true" />
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Buscar fruta, produto ou kit"
+            aria-label="Buscar produtos e kits"
+          />
+          {searchTerm && (
+            <button type="button" onClick={() => setSearchTerm("")} aria-label="Limpar busca">
+              <X size={16} />
+            </button>
+          )}
+        </div>
+        <div className="store-category-tabs" role="group" aria-label="Filtrar produtos">
+          {([
+            ["all", "Tudo"],
+            ["loose", "Montar minha feira"],
+            ["kits", "Kits prontos"],
+          ] as const).map(([category, label]) => (
+            <button
+              key={category}
+              className={categoryFilter === category ? "store-category-tab active" : "store-category-tab"}
+              type="button"
+              aria-pressed={categoryFilter === category}
+              onClick={() => setCategoryFilter(category)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {!isSupabaseConfigured && (
@@ -414,14 +530,16 @@ export default function MarketplaceStore() {
         </div>
       ) : !loadError && isSupabaseConfigured ? (
         <div className="store-empty">
-          {kits.length
+          {searchTerm.trim()
+            ? `Nenhum resultado para "${searchTerm.trim()}". Tente outra busca.`
+            : kits.length
             ? "Ainda não há itens nesta categoria. Escolha outra opção para continuar."
             : "Estamos preparando os primeiros produtos. Em breve você poderá montar sua feira por aqui."}
         </div>
       ) : null}
       <p className="store-footnote"><Check size={14} /> Pedido enviado pelo WhatsApp para confirmar entrega e pagamento.</p>
 
-      {checkoutOpen && (
+      {checkoutOpen && createPortal(
         <div
           className="checkout-backdrop"
           onMouseDown={(event) => {
@@ -596,12 +714,13 @@ export default function MarketplaceStore() {
               <div className="checkout-empty">
                 <ShoppingBag size={25} />
                 <h3>Sua sacola está vazia</h3>
-                <p>Escolha um kit para começar seu pedido.</p>
-                <button type="button" onClick={() => setCheckoutOpen(false)}>Ver kits</button>
+                <p>Escolha um produto ou kit para começar seu pedido.</p>
+                <button type="button" onClick={() => setCheckoutOpen(false)}>Continuar comprando</button>
               </div>
             )}
           </section>
-        </div>
+        </div>,
+        document.body,
       )}
     </section>
   );
