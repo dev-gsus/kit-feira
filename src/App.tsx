@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
 import {
   ArrowDown,
   ArrowRight,
@@ -18,9 +18,16 @@ import {
   X,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
-import { appPath, isAdminPath } from "./lib/routes";
+import {
+  appPath,
+  isAdminPath,
+  isCustomerAccountPath,
+  isCustomerLoginPath,
+} from "./lib/routes";
 import AdminApp from "./Admin";
 import MarketplaceStore from "./MarketplaceStore";
+
+const CustomerAccount = lazy(() => import("./CustomerAccount"));
 
 type Raffle = {
   id: string;
@@ -86,6 +93,31 @@ function Brand() {
   return (
     <a className="brand" href="#inicio" aria-label="Kit Feira, início">
       <img className="brand-logo" src="/kit-feira-logo.png" alt="Kit Feira — Na sua porta" />
+    </a>
+  );
+}
+
+function CustomerAuthLink({ className }: { className?: string }) {
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active) setSignedIn(Boolean(data.session));
+    });
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSignedIn(Boolean(session));
+    });
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  return (
+    <a className={className} href={appPath(signedIn ? "conta" : "login")}>
+      {signedIn ? "Minha conta" : "Login"}
     </a>
   );
 }
@@ -290,9 +322,7 @@ function PublicSite() {
       <header className="topbar">
         <div className="nav-wrap">
           <Brand />
-          <a className="mobile-login-link" href={appPath("admin")}>
-            Login <ArrowRight size={14} />
-          </a>
+          <CustomerAuthLink className="mobile-login-link" />
           <button
             className="mobile-menu"
             type="button"
@@ -311,9 +341,7 @@ function PublicSite() {
             <a href="#inscricao" onClick={() => setMenuOpen(false)}>
               Sorteios
             </a>
-            <a className="nav-login" href={appPath("admin")} onClick={() => setMenuOpen(false)}>
-              Login
-            </a>
+            <CustomerAuthLink className="nav-login" />
             <a className="nav-cta" href="#kits" onClick={() => setMenuOpen(false)}>
               Fazer meu pedido <ArrowRight size={16} />
             </a>
@@ -655,7 +683,8 @@ function PublicSite() {
         <Brand />
         <span>Produtos fresquinhos e pedidos preparados com carinho.</span>
         <a href="#inicio">Voltar ao topo <ChevronDown size={15} /></a>
-        <a className="footer-admin-link" href={appPath("admin")}>Login</a>
+        <CustomerAuthLink className="footer-customer-link" />
+        <a className="footer-admin-link" href={appPath("admin")}>Acesso administrativo</a>
         <small>© {new Date().getFullYear()} Kit Feira. Fresquinho do seu jeito.</small>
         <small className="developer-credit">Desenvolvido por <a href="https://github.com/dev-gsus" target="_blank" rel="noreferrer">dev-gsus</a></small>
       </footer>
@@ -678,9 +707,16 @@ function PublicSite() {
 }
 
 function App() {
-  return isAdminPath(window.location.pathname)
-    ? <AdminApp />
-    : <PublicSite />;
+  const { pathname } = window.location;
+  if (isAdminPath(pathname)) return <AdminApp />;
+  if (isCustomerLoginPath(pathname) || isCustomerAccountPath(pathname)) {
+    return (
+      <Suspense fallback={<div className="admin-loading">Carregando sua conta...</div>}>
+        <CustomerAccount accountRoute={isCustomerAccountPath(pathname)} />
+      </Suspense>
+    );
+  }
+  return <PublicSite />;
 }
 
 export default App;

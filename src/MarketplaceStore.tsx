@@ -184,6 +184,9 @@ export default function MarketplaceStore() {
   const storeSectionRef = useRef<HTMLElement>(null);
   const cartAnchorRef = useRef<HTMLDivElement>(null);
   const floatingCartRef = useRef<HTMLButtonElement>(null);
+  const checkoutDialogRef = useRef<HTMLElement>(null);
+  const isSubmittingRef = useRef(false);
+  isSubmittingRef.current = submitting;
 
   useEffect(() => {
     let active = true;
@@ -220,6 +223,85 @@ export default function MarketplaceStore() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const client = supabase;
+    let active = true;
+
+    async function loadCustomerDefaults() {
+      const { data: sessionData, error: sessionError } = await client.auth.getSession();
+      if (!active) return;
+      if (sessionError) {
+        setCheckoutError(`Não foi possível validar sua conta: ${sessionError.message}`);
+        return;
+      }
+      if (!sessionData.session) return;
+
+      const userId = sessionData.session.user.id;
+      const [profileResult, addressResult] = await Promise.all([
+        client
+          .from("customer_profiles")
+          .select("full_name, phone")
+          .eq("user_id", userId)
+          .maybeSingle(),
+        client
+          .from("customer_addresses")
+          .select("delivery_address, address_number, neighborhood, complement, postal_code, city")
+          .eq("user_id", userId)
+          .eq("is_default", true)
+          .maybeSingle(),
+      ]);
+      if (!active) return;
+
+      const loadError = profileResult.error ?? addressResult.error;
+      if (loadError) {
+        setCheckoutError(
+          `Não foi possível carregar seus dados salvos: ${loadError.message}`,
+        );
+        return;
+      }
+
+      const profile = profileResult.data;
+      const address = addressResult.data;
+      setCheckoutForm((current) => ({
+        ...current,
+        customerName: current.customerName || profile?.full_name || String(sessionData.session.user.user_metadata.full_name ?? ""),
+        phone: current.phone || formatPhone(profile?.phone ?? String(sessionData.session.user.user_metadata.phone ?? "")),
+        address: current.address || address?.delivery_address || "",
+        addressNumber: current.addressNumber || address?.address_number || "",
+        neighborhood: current.neighborhood || address?.neighborhood || "",
+        complement: current.complement || address?.complement || "",
+        postalCode: current.postalCode || formatPostalCode(address?.postal_code ?? ""),
+        city: current.city || address?.city || "",
+      }));
+    }
+
+    void loadCustomerDefaults();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!checkoutOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const previousFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    document.body.style.overflow = "hidden";
+    const focusFrame = window.requestAnimationFrame(() => checkoutDialogRef.current?.focus());
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSubmittingRef.current) setCheckoutOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
+  }, [checkoutOpen]);
 
   useEffect(() => {
     const originalCart = cartAnchorRef.current?.querySelector("button");
@@ -341,6 +423,7 @@ export default function MarketplaceStore() {
     value: CheckoutForm[K],
   ) {
     setCheckoutForm((current) => ({ ...current, [key]: value }));
+    setCheckoutError("");
   }
 
   function openCheckout() {
@@ -549,10 +632,12 @@ export default function MarketplaceStore() {
           }}
         >
           <section
+            ref={checkoutDialogRef}
             className="checkout-dialog"
             role="dialog"
             aria-modal="true"
             aria-labelledby="checkout-title"
+            tabIndex={-1}
           >
             <header className="checkout-header">
               <div>

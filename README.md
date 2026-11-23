@@ -6,35 +6,38 @@ campanhas de sorteio.
 
 ## Preparar o Supabase
 
-1. Abra o SQL Editor do projeto e execute [`supabase/schema.sql`](./supabase/schema.sql).
-   O script cria e atualiza as tabelas, políticas de acesso, funções de checkout
-   e comparação de preços e o bucket de fotos. Ele também atualiza o esquema dos
-   sorteios existente e prepara os pedidos para quantidades fracionadas por kg.
-   Se a loja já estava em uso, aplique também
+1. Em uma instalação nova, execute [`supabase/schema.sql`](./supabase/schema.sql)
+   no SQL Editor. A migração
    [`supabase/migrations/20261123_marketplace_custom_fair.sql`](./supabase/migrations/20261123_marketplace_custom_fair.sql)
-   para habilitar produtos avulsos e atualizar os pedidos existentes.
-2. Em **Authentication → Users**, cadastre as contas que poderão administrar o painel.
-   As contas existentes quando o esquema inicial foi instalado já foram
-   autorizadas; novas contas precisam ser adicionadas manualmente:
+   habilita produtos avulsos quando ainda não estiver incluída no banco.
+2. Em todas as instalações, aplique uma vez
+   [`supabase/migrations/20261123_customer_accounts_crm.sql`](./supabase/migrations/20261123_customer_accounts_crm.sql).
+   Ela cria contas de clientes, endereços salvos, histórico de pedidos e acesso ao CRM.
+3. Em **Authentication → Users**, cadastre ou confirme as contas que poderão
+   administrar o painel. A autorização administrativa é mantida separadamente
+   em `admin_users`; novos clientes não são adicionados a essa tabela:
 
    ```sql
    insert into public.admin_users (user_id)
    values ('UUID_DO_USUARIO_ADMIN');
    ```
 
-3. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no `.env.local`.
+4. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no `.env.local`.
    A chave publishable/anon é usada no navegador; nunca coloque uma chave
    `service_role` no site.
-4. Em **Authentication → URL Configuration**, mantenha a URL local e, após
-   publicar, adicione também o endereço do GitHub Pages à lista de URLs de
-   redirecionamento permitidas.
+5. Em **Authentication → URL Configuration**, configure a URL local e adicione
+   `https://kit-feira.vercel.app/conta` à lista de URLs de redirecionamento
+   permitidas para a confirmação de cadastro.
 
 O painel não controla estoque. Cadastre kits prontos ou produtos avulsos com
 descrição, unidade, preço e foto na aba **Loja Kit Feira**. O checkout registra
 o pedido e os itens com os preços confirmados pelo banco antes de abrir o
 WhatsApp `11 97077-3006`; o status inicial fica como aguardando confirmação.
-Produtos vendidos por kg aceitam quantidades de meio em meio quilo. Dados
-pessoais e endereço ficam visíveis apenas para administradores.
+Produtos vendidos por kg aceitam quantidades de meio em meio quilo. Clientes
+podem comprar sem conta; quando entram, seus novos pedidos e endereços ficam
+salvos na própria área `/conta`. Contas de clientes veem apenas os próprios
+dados e pedidos; o CRM e os dados de todos os pedidos permanecem restritos aos
+administradores autorizados.
 
 Na aba **Custos de compra**, registre cada compra de fruta ou insumo com
 quantidade, unidade e total pago. O painel compara o preço por unidade com a
@@ -49,6 +52,8 @@ npm run dev
 ```
 
 - Loja: `/`
+- Login/cadastro de clientes: `/login`
+- Conta, endereços e pedidos: `/conta`
 - Painel administrativo: `/admin`
 - Build de produção: `npm run build`
 
@@ -68,7 +73,7 @@ iniciá-lo manualmente em **Actions**.
    publicado aparecerá no ambiente `github-pages` da execução.
 
 O build configura o caminho do site para o nome do repositório e inclui um
-fallback para abrir `/admin` no GitHub Pages. O projeto não está conectado a
+fallback para abrir as rotas do app no GitHub Pages. O projeto não está conectado a
 um repositório remoto por padrão.
 
 ## Publicar na Vercel
@@ -81,8 +86,8 @@ Em **Settings → Environment Variables**, mantenha `VITE_SUPABASE_URL` e
 `VITE_SUPABASE_ANON_KEY` disponíveis nos ambientes Production, Preview e
 Development. A chave usada no site deve ser a chave publishable do Supabase;
 ela é incorporada ao JavaScript do navegador. Nunca use `service_role`.
-O arquivo `vercel.json` reescreve `/admin` para a aplicação React para que o
-link de login funcione também ao abrir a rota diretamente.
+O arquivo `vercel.json` reescreve `/admin`, `/login` e `/conta` para a aplicação
+React para que as rotas funcionem também ao abrir o link diretamente.
 
 ## Sorteios
 

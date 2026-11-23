@@ -8,8 +8,20 @@ export function appPath(path = "") {
 }
 
 export function isAdminPath(pathname: string) {
+  return getAppRoute(pathname) === "/admin";
+}
+
+export function isCustomerLoginPath(pathname: string) {
+  return getAppRoute(pathname) === "/login";
+}
+
+export function isCustomerAccountPath(pathname: string) {
+  return getAppRoute(pathname) === "/conta";
+}
+
+function getAppRoute(pathname: string) {
   const route = pathname.startsWith(appBasePath)
     ? `/${pathname.slice(appBasePath.length)}`
     : pathname;
-  return route.replace(/\/+$/, "") === "/admin";
+  return route.replace(/\/+$/, "");
 }

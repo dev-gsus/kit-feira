@@ -291,14 +291,15 @@ body { background: var(--paper); }
 .raffle-capacity strong { color: #52633b; font-size: 10px; }
 .capacity-track { height: 5px; background: #e6e9d8; border-radius: 5px; overflow: hidden; margin-top: 9px; }
 .capacity-track span { display: block; height: 100%; background: #9bae58; border-radius: inherit; transition: width .3s ease; }
-.footer-admin-link { color: #85877e; font-size: 10px; }
-.footer-admin-link:hover { color: #637c3f; }
+.footer-customer-link, .footer-admin-link { color: #85877e; font-size: 10px; text-decoration: none; }
+.footer-customer-link:hover, .footer-admin-link:hover { color: #637c3f; }
 @media (max-width: 640px) {
   .raffle-public-details > img { width: 58px; height: 58px; }
   @media (prefers-reduced-motion: reduce) {
     .banana-wrap { animation: none; }
   }
-  .footer-admin-link { order: 2; }
+  .footer-customer-link { order: 2; }
+  .footer-admin-link { order: 3; }
 }
 .mobile-login-link { display: none; }
 .fruit-kits-section { padding-top: 89px; padding-bottom: 96px; background: #f0efe5; }

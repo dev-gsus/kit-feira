@@ -74,11 +74,6 @@ create table if not exists public.admin_users (
   created_at timestamptz not null default now()
 );
 
-insert into public.admin_users (user_id)
-select id
-from auth.users
-on conflict (user_id) do nothing;
-
 alter table public.admin_users enable row level security;
 
 create or replace function public.is_feira_admin()
@@ -784,3 +779,6 @@ $$;
 
 revoke all on function public.admin_marketplace_summary() from public, anon;
 grant execute on function public.admin_marketplace_summary() to authenticated;
+
+-- Apply supabase/migrations/20261123_customer_accounts_crm.sql after this schema
+-- to enable customer accounts, saved addresses, purchase history, and CRM access.

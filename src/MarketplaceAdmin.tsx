@@ -10,9 +10,11 @@ import {
   Pencil,
   Plus,
   ReceiptText,
+  Search,
   ShoppingBag,
   TrendingDown,
   TrendingUp,
+  Users,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import "./marketplace.css";
@@ -79,6 +81,17 @@ type MarketplaceSummary = {
   today_orders: number;
 };
 
+type CustomerSummary = {
+  user_id: string;
+  email: string;
+  full_name: string;
+  phone: string;
+  created_at: string;
+  order_count: number;
+  purchase_total: number;
+  last_order_at: string | null;
+};
+
 type KitForm = {
   name: string;
   description: string;
@@ -113,7 +126,7 @@ type CostComparison = {
   difference_percent: number | null;
 };
 
-type AdminSection = "overview" | "kits" | "orders" | "costs";
+type AdminSection = "overview" | "kits" | "orders" | "customers" | "costs";
 type MarketplaceAdminProps = {
   compact?: boolean;
   onOpenStore?: () => void;
@@ -195,6 +208,11 @@ function shortDateTime(value: string) {
   }).format(new Date(value));
 }
 
+function phoneDigits(value: string) {
+  const phone = value.replace(/\D/g, "");
+  return phone.length > 11 && phone.startsWith("55") ? phone : `55${phone}`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -241,8 +259,21 @@ export default function MarketplaceAdmin({
   const [costForm, setCostForm] = useState<CostForm>(emptyCostForm);
   const [costComparison, setCostComparison] = useState<CostComparison | null>(null);
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+  const [customers, setCustomers] = useState<CustomerSummary[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [customersError, setCustomersError] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerReload, setCustomerReload] = useState(0);
 
   const recentOrders = useMemo(() => orders.slice(0, 5), [orders]);
+  const visibleCustomers = useMemo(() => {
+    const search = customerSearch.trim().toLocaleLowerCase("pt-BR");
+    if (!search) return customers;
+    return customers.filter((customer) =>
+      [customer.full_name, customer.email, customer.phone]
+        .some((value) => value.toLocaleLowerCase("pt-BR").includes(search)),
+    );
+  }, [customerSearch, customers]);
 
   async function loadData() {
     if (!supabase) {
@@ -331,6 +362,35 @@ export default function MarketplaceAdmin({
   useEffect(() => {
     void loadData();
   }, []);
+
+  useEffect(() => {
+    if (section !== "customers") return;
+    if (!supabase) {
+      setCustomersError("O banco de dados não está configurado neste ambiente.");
+      return;
+    }
+
+    let active = true;
+    setCustomersLoading(true);
+    setCustomersError("");
+    void supabase.rpc("admin_customer_summary").then(({ data, error }) => {
+      if (!active) return;
+      if (error) {
+        setCustomersError(
+          ["PGRST202", "PGRST204", "PGRST205"].includes(error.code ?? "")
+            ? "Para habilitar o CRM, aplique a migração supabase/migrations/20261123_customer_accounts_crm.sql no Supabase."
+            : `Não foi possível carregar os clientes: ${error.message}`,
+        );
+        setCustomersLoading(false);
+        return;
+      }
+      setCustomers((data ?? []) as CustomerSummary[]);
+      setCustomersLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [customerReload, section]);
 
   function updateKitForm<K extends keyof KitForm>(key: K, value: KitForm[K]) {
     setKitForm((current) => ({ ...current, [key]: value }));
@@ -565,6 +625,7 @@ export default function MarketplaceAdmin({
             ["overview", "Visão geral"],
             ["kits", "Produtos"],
             ["orders", "Pedidos"],
+            ["customers", "Clientes"],
             ["costs", "Custos de compra"],
           ] as const).map(([id, label]) => (
             <button
@@ -846,6 +907,67 @@ export default function MarketplaceAdmin({
           ) : !loading ? (
             <div className="marketplace-admin-empty">Nenhum pedido recebido ainda. Os novos pedidos aparecerão aqui.</div>
           ) : null}
+        </div>
+      )}
+
+      {section === "customers" && (
+        <div>
+          <div className="marketplace-admin-toolbar">
+            <div><h2>Clientes Kit Feira</h2><p>Contas cadastradas, contato e histórico de compras.</p></div>
+            <button type="button" className="admin-link-button" onClick={() => setCustomerReload((current) => current + 1)}>
+              Atualizar lista <ArrowRight size={14} />
+            </button>
+          </div>
+          <div className="customer-crm-stats">
+            <article><Users size={17} /><span>Clientes cadastrados</span><strong>{customers.length}</strong></article>
+            <article><ReceiptText size={17} /><span>Pedidos vinculados</span><strong>{customers.reduce((total, customer) => total + customer.order_count, 0)}</strong></article>
+            <article><TrendingUp size={17} /><span>Valor não cancelado</span><strong>{currency(customers.reduce((total, customer) => total + customer.purchase_total, 0))}</strong></article>
+          </div>
+          <label className="customer-crm-search">
+            <Search size={16} aria-hidden="true" />
+            <input
+              type="search"
+              value={customerSearch}
+              onChange={(event) => setCustomerSearch(event.target.value)}
+              placeholder="Buscar por nome, e-mail ou telefone"
+              aria-label="Buscar clientes"
+            />
+          </label>
+          {customersError && <div className="marketplace-admin-error"><CircleAlert size={15} /> {customersError}</div>}
+          {customersLoading ? (
+            <div className="admin-loading-inline"><LoaderCircle className="spin" size={17} /> Carregando clientes...</div>
+          ) : visibleCustomers.length ? (
+            <div className="marketplace-admin-table-wrap">
+              <table className="marketplace-admin-table customer-crm-table">
+                <thead><tr><th>Cliente</th><th>Contato</th><th>Cadastro</th><th>Pedidos</th><th>Total não cancelado</th><th>Último pedido</th></tr></thead>
+                <tbody>
+                  {visibleCustomers.map((customer) => (
+                    <tr key={customer.user_id}>
+                      <td><strong>{customer.full_name || "Cliente Kit Feira"}</strong></td>
+                      <td>
+                        <a href={`mailto:${customer.email}`}>{customer.email}</a>
+                        {customer.phone && (
+                          <a className="customer-crm-whatsapp" href={`https://wa.me/${phoneDigits(customer.phone)}`} target="_blank" rel="noreferrer">
+                            WhatsApp · {customer.phone}
+                          </a>
+                        )}
+                      </td>
+                      <td>{shortDateTime(customer.created_at)}</td>
+                      <td><strong>{customer.order_count}</strong></td>
+                      <td><strong>{currency(customer.purchase_total)}</strong></td>
+                      <td>{customer.last_order_at ? shortDateTime(customer.last_order_at) : "Ainda sem pedidos"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="marketplace-admin-empty">
+              {customerSearch.trim()
+                ? `Nenhum cliente encontrado para "${customerSearch.trim()}".`
+                : "Os clientes que criarem uma conta aparecerão aqui, junto ao histórico de compras."}
+            </div>
+          )}
         </div>
       )}
 
