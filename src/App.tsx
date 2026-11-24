@@ -125,6 +125,7 @@ function CustomerAuthLink({ className }: { className?: string }) {
 function PublicSite() {
   const [raffles, setRaffles] = useState<Raffle[]>([]);
   const [selectedRaffleId, setSelectedRaffleId] = useState("");
+  const [raffleLinkCopied, setRaffleLinkCopied] = useState(false);
   const [registrationCounts, setRegistrationCounts] = useState<Record<string, number>>({});
   const [winners, setWinners] = useState<Winner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,10 +181,13 @@ function PublicSite() {
         const availableRaffles = (raffleResult.data ?? []) as Raffle[];
         setRaffles(availableRaffles);
         setWinners((winnersResult.data ?? []) as Winner[]);
+        const requestedRaffleId = new URLSearchParams(window.location.search).get("sorteio");
         setSelectedRaffleId((current) =>
           availableRaffles.some((item) => item.id === current)
             ? current
-            : availableRaffles[0]?.id ?? "",
+            : availableRaffles.some((item) => item.id === requestedRaffleId)
+              ? requestedRaffleId!
+              : availableRaffles[0]?.id ?? "",
         );
         const countResults = await Promise.all(
           availableRaffles.map(async (item) => ({
@@ -482,6 +486,25 @@ function PublicSite() {
                 <div><small>VOCÊ PODE GANHAR</small><strong>{raffle.prize}</strong></div>
                 <Sparkles className="prize-sparkle" size={20} />
               </div>
+            )}
+            {raffle && (
+              <button
+                className="raffle-share-link"
+                type="button"
+                onClick={async () => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("sorteio", raffle.id);
+                  try {
+                    await navigator.clipboard.writeText(url.toString());
+                    setRaffleLinkCopied(true);
+                    window.setTimeout(() => setRaffleLinkCopied(false), 2200);
+                  } catch {
+                    window.prompt("Copie o link deste sorteio:", url.toString());
+                  }
+                }}
+              >
+                {raffleLinkCopied ? "Link do sorteio copiado!" : "Copiar link deste sorteio"}
+              </button>
             )}
             {raffle && (
               <div className="raffle-group-rule">

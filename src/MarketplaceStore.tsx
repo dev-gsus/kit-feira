@@ -14,7 +14,9 @@ import {
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { lookupCep } from "./lib/cep";
+import { appPath } from "./lib/routes";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import type { Session } from "@supabase/supabase-js";
 import "./marketplace.css";
 
 const whatsappNumber = "5511970773006";
@@ -39,6 +41,16 @@ type MarketplaceKit = {
 type CartItem = {
   kit: MarketplaceKit;
   quantity: number;
+};
+
+type SavedCartItem = {
+  id: string;
+  quantity: number;
+};
+
+type SavedCart = {
+  items: SavedCartItem[];
+  error: string;
 };
 
 type MarketplaceAnnouncement = {
@@ -78,6 +90,7 @@ type CheckoutConfirmation = {
   whatsappUrl: string;
   orderNumber: string;
   customerName: string;
+  orderId: string;
 };
 
 function isCreatedOrder(value: unknown): value is CreatedOrder {
@@ -191,18 +204,70 @@ function initialCheckoutForm(): CheckoutForm {
   };
 }
 
+function readSavedCart(): SavedCart {
+  if (typeof window === "undefined") return { items: [], error: "" };
+
+  let storedCart: string | null;
+  try {
+    storedCart = window.sessionStorage.getItem("kit-feira-cart");
+  } catch (error) {
+    return {
+      items: [],
+      error: `Não foi possível restaurar sua sacola: ${error instanceof Error ? error.message : "armazenamento indisponível"}.`,
+    };
+  }
+  if (!storedCart) return { items: [], error: "" };
+
+  let parsedCart: unknown;
+  try {
+    parsedCart = JSON.parse(storedCart);
+  } catch {
+    return { items: [], error: "A sacola salva estava inválida e não pôde ser restaurada." };
+  }
+  if (!Array.isArray(parsedCart)) {
+    return { items: [], error: "A sacola salva estava inválida e não pôde ser restaurada." };
+  }
+
+  const items = parsedCart.filter((item): item is SavedCartItem =>
+    item !== null &&
+    typeof item === "object" &&
+    typeof item.id === "string" &&
+    typeof item.quantity === "number" &&
+    Number.isFinite(item.quantity) &&
+    item.quantity > 0 &&
+    item.quantity <= 20,
+  );
+  return {
+    items,
+    error: items.length === parsedCart.length
+      ? ""
+      : "Alguns itens da sacola salva estavam inválidos e foram ignorados.",
+  };
+}
+
 export default function MarketplaceStore() {
+  const [savedCart] = useState<SavedCart>(readSavedCart);
   const [kits, setKits] = useState<MarketplaceKit[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [productsLoaded, setProductsLoaded] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartRestored, setCartRestored] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [directPurchase, setDirectPurchase] = useState<{ product: MarketplaceKit; quantity: number } | null>(null);
   const [checkoutConfirmation, setCheckoutConfirmation] = useState<CheckoutConfirmation | null>(null);
+  const [wheelPrize, setWheelPrize] = useState("");
+  const [wheelSpinning, setWheelSpinning] = useState(false);
+  const [wheelError, setWheelError] = useState("");
   const [checkoutForm, setCheckoutForm] = useState<CheckoutForm>(initialCheckoutForm);
-  const [checkoutError, setCheckoutError] = useState("");
+  const [checkoutError, setCheckoutError] = useState(savedCart.error);
   const [submitting, setSubmitting] = useState(false);
   const [customerGreetingName, setCustomerGreetingName] = useState("");
+  const [customerSession, setCustomerSession] = useState<Session | null>(null);
+  const [checkingCustomerSession, setCheckingCustomerSession] = useState(true);
+  const [resumeCheckout] = useState(
+    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("checkout") === "1",
+  );
   const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({});
   const [cartFeedback, setCartFeedback] = useState("");
   const [cartPulse, setCartPulse] = useState(false);
@@ -249,6 +314,7 @@ export default function MarketplaceStore() {
         );
       } else {
         setKits((data ?? []) as MarketplaceKit[]);
+        setProductsLoaded(true);
       }
       setLoading(false);
     }
@@ -291,21 +357,63 @@ export default function MarketplaceStore() {
   }, []);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!productsLoaded || cartRestored) return;
+
+    const kitsById = new Map(kits.map((kit) => [kit.id, kit]));
+    const restoredCart = new Map<string, CartItem>();
+    for (const savedItem of savedCart.items) {
+      const kit = kitsById.get(savedItem.id);
+      if (!kit) continue;
+      const previous = restoredCart.get(kit.id);
+      restoredCart.set(kit.id, {
+        kit,
+        quantity: Math.min(20, (previous?.quantity ?? 0) + savedItem.quantity),
+      });
+    }
+
+    const nextCart = [...restoredCart.values()];
+    setCart(nextCart);
+    setCartRestored(true);
+    if (savedCart.items.some((item) => !kitsById.has(item.id)) && !savedCart.error) {
+      setCheckoutError("Alguns produtos salvos não estão mais disponíveis e foram removidos da sacola.");
+    }
+    if (resumeCheckout) {
+      setCheckoutOpen(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("checkout");
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+  }, [cartRestored, kits, productsLoaded, resumeCheckout, savedCart]);
+
+  useEffect(() => {
+    if (!cartRestored) return;
+    try {
+      if (cart.length) {
+        window.sessionStorage.setItem(
+          "kit-feira-cart",
+          JSON.stringify(cart.map(({ kit, quantity }) => ({ id: kit.id, quantity }))),
+        );
+      } else {
+        window.sessionStorage.removeItem("kit-feira-cart");
+      }
+    } catch (error) {
+      setCheckoutError(
+        `Não foi possível salvar sua sacola nesta sessão: ${error instanceof Error ? error.message : "armazenamento indisponível"}.`,
+      );
+    }
+  }, [cart, cartRestored]);
+
+  useEffect(() => {
+    if (!supabase) {
+      setCheckingCustomerSession(false);
+      return;
+    }
     const client = supabase;
     let active = true;
 
-    async function loadCustomerDefaults() {
-      const { data: sessionData, error: sessionError } = await client.auth.getSession();
-      if (!active) return;
-      if (sessionError) {
-        setCheckoutError(`Não foi possível validar sua conta: ${sessionError.message}`);
-        return;
-      }
-      if (!sessionData.session) return;
-
-      const userId = sessionData.session.user.id;
-      const metadataName = String(sessionData.session.user.user_metadata.full_name ?? "");
+    async function loadCustomerDefaults(session: Session) {
+      const userId = session.user.id;
+      const metadataName = String(session.user.user_metadata.full_name ?? "");
       setCustomerGreetingName(metadataName);
       const [profileResult, addressResult] = await Promise.all([
         client
@@ -336,7 +444,7 @@ export default function MarketplaceStore() {
       setCheckoutForm((current) => ({
         ...current,
         customerName: current.customerName || profile?.full_name || metadataName,
-        phone: current.phone || formatPhone(profile?.phone ?? String(sessionData.session.user.user_metadata.phone ?? "")),
+        phone: current.phone || formatPhone(profile?.phone ?? String(session.user.user_metadata.phone ?? "")),
         address: current.address || address?.delivery_address || "",
         addressNumber: current.addressNumber || address?.address_number || "",
         neighborhood: current.neighborhood || address?.neighborhood || "",
@@ -346,9 +454,29 @@ export default function MarketplaceStore() {
       }));
     }
 
-    void loadCustomerDefaults();
+    void client.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      if (error) {
+        setCheckoutError(`Não foi possível validar sua conta: ${error.message}`);
+        setCheckingCustomerSession(false);
+        return;
+      }
+      setCustomerSession(data.session);
+      setCheckingCustomerSession(false);
+      if (data.session) void loadCustomerDefaults(data.session);
+    });
+    const { data: authListener } = client.auth.onAuthStateChange((_event, session) => {
+      window.setTimeout(() => {
+        if (!active) return;
+        setCustomerSession(session);
+        setCheckingCustomerSession(false);
+        if (session) void loadCustomerDefaults(session);
+        else setCustomerGreetingName("");
+      }, 0);
+    });
     return () => {
       active = false;
+      authListener.subscription.unsubscribe();
     };
   }, []);
 
@@ -453,6 +581,7 @@ export default function MarketplaceStore() {
     () => cart.reduce((total, item) => total + item.kit.price * item.quantity, 0),
     [cart],
   );
+  const checkoutLoginHref = `${appPath("login")}?next=${encodeURIComponent(`${appPath()}?checkout=1`)}`;
   const cartProductCount = cart.length;
   const normalizedSearchTerm = normalizeSearchText(searchTerm.trim());
   const visibleProducts = useMemo(
@@ -595,6 +724,10 @@ export default function MarketplaceStore() {
       setCheckoutError("Adicione produtos ou kits ao pedido antes de continuar.");
       return;
     }
+    if (!customerSession) {
+      setCheckoutError("Entre na sua conta antes de finalizar o pedido.");
+      return;
+    }
     if (digits(checkoutForm.phone).length < 10 || digits(checkoutForm.phone).length > 15) {
       setCheckoutError("Confira o número do celular informado.");
       return;
@@ -644,7 +777,24 @@ export default function MarketplaceStore() {
       whatsappUrl: `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`,
       orderNumber: data.order_id.slice(0, 8).toUpperCase(),
       customerName: customerGreetingName.trim() || checkoutForm.customerName.trim() || "Cliente",
+      orderId: data.order_id,
     });
+  }
+
+  async function spinWheel() {
+    if (!supabase || !customerSession || !checkoutConfirmation || wheelSpinning || wheelPrize) return;
+    setWheelSpinning(true);
+    setWheelError("");
+    const { data, error } = await supabase.rpc("spin_marketplace_wheel", {
+      p_order_id: checkoutConfirmation.orderId,
+    });
+    setWheelSpinning(false);
+    const result = data as { prize?: string } | null;
+    if (error || !result?.prize) {
+      setWheelError(error?.message ?? "Não foi possível girar a roleta agora.");
+      return;
+    }
+    setWheelPrize(result.prize);
   }
 
   return (
@@ -860,7 +1010,9 @@ export default function MarketplaceStore() {
           >
             <header className="checkout-header">
               <div>
-                <span className="checkout-kicker">{checkoutConfirmation ? "PEDIDO REGISTRADO" : "FALTA POUCO"}</span>
+                <span className="checkout-kicker">
+                  {checkoutConfirmation ? "PEDIDO REGISTRADO" : customerSession ? "FALTA POUCO" : "LOGIN NECESSÁRIO"}
+                </span>
                 <h2 id="checkout-title">{checkoutConfirmation ? "Sua compra está quase lá" : "Seu pedido"}</h2>
               </div>
               <button
@@ -879,6 +1031,21 @@ export default function MarketplaceStore() {
                 <span className="checkout-confirmation-icon"><Check size={23} /></span>
                 <small>PEDIDO #{checkoutConfirmation.orderNumber}</small>
                 <h3>Sua compra está quase finalizada, {checkoutConfirmation.customerName.split(" ")[0] || "Cliente"}!</h3>
+                <div className="lucky-wheel-card">
+                  <span className="checkout-kicker">UM PRESENTE PARA VOCÊ</span>
+                  <h3>Roleta da sorte</h3>
+                  {wheelPrize ? (
+                    <p className="lucky-wheel-result">Você ganhou: <strong>{wheelPrize}</strong></p>
+                  ) : (
+                    <>
+                      <div className={wheelSpinning ? "lucky-wheel spinning" : "lucky-wheel"} aria-hidden="true">🎁</div>
+                      <button type="button" className="checkout-submit" onClick={() => void spinWheel()} disabled={wheelSpinning || !customerSession}>
+                        {wheelSpinning ? "Girando..." : "Girar a roleta"}
+                      </button>
+                    </>
+                  )}
+                  {wheelError && <p className="checkout-error" role="alert">{wheelError}</p>}
+                </div>
                 <p>Confira os itens e os dados de entrega na conversa. Toque abaixo para enviar o pedido à Kit Feira pelo WhatsApp.</p>
                 <button
                   type="button"
@@ -898,7 +1065,31 @@ export default function MarketplaceStore() {
                   Voltar à loja
                 </button>
               </div>
-            ) : cart.length ? (
+            ) : cart.length ? checkingCustomerSession ? (
+              <div className="checkout-auth-required">
+                <LoaderCircle className="spin" size={25} />
+                <h3>Validando sua conta</h3>
+                <p>Estamos conferindo sua sessão para continuar com segurança.</p>
+              </div>
+            ) : !customerSession ? (
+              <div className="checkout-auth-required">
+                <span className="checkout-auth-icon"><ShoppingBag size={21} /></span>
+                <span className="checkout-kicker">SUA SACOLA FICA GUARDADA</span>
+                <h3>Entre para finalizar seu pedido</h3>
+                <p>O login é necessário para salvar seus pedidos e endereços na sua conta. Depois de entrar, voltaremos para concluir sua compra.</p>
+                {checkoutError && <div className="checkout-error" role="alert">{checkoutError}</div>}
+                <a className="checkout-login-link" href={checkoutLoginHref}>
+                  Entrar ou criar conta <ArrowRight size={17} />
+                </a>
+                <button
+                  type="button"
+                  className="checkout-confirmation-back"
+                  onClick={() => setCheckoutOpen(false)}
+                >
+                  Continuar comprando
+                </button>
+              </div>
+            ) : (
               <>
                 <div className="checkout-items">
                   {cart.map(({ kit, quantity }) => (

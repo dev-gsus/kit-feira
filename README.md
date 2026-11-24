@@ -7,20 +7,25 @@ campanhas de sorteio.
 ## Preparar o Supabase
 
 1. Em uma instalação nova, execute [`supabase/schema.sql`](./supabase/schema.sql)
-   no SQL Editor. A migração
+   no SQL Editor. Em bancos antigos, aplique
    [`supabase/migrations/20261123_marketplace_custom_fair.sql`](./supabase/migrations/20261123_marketplace_custom_fair.sql)
-   habilita produtos avulsos quando ainda não estiver incluída no banco.
+   para habilitar produtos avulsos.
 2. Em todas as instalações, aplique uma vez
    [`supabase/migrations/20261123_customer_accounts_crm.sql`](./supabase/migrations/20261123_customer_accounts_crm.sql).
    Ela cria contas de clientes, endereços salvos, histórico de pedidos e acesso ao CRM.
-3. Aplique também uma vez
+3. Aplique
+   [`supabase/migrations/20261123_admin_dashboard_required_login.sql`](./supabase/migrations/20261123_admin_dashboard_required_login.sql)
+   depois da migração de clientes. Ela habilita as métricas administrativas e
+   exige uma sessão autenticada para criar pedidos, inclusive chamadas diretas
+   à API do banco.
+4. Aplique também uma vez
    [`supabase/migrations/20261123_marketplace_announcements.sql`](./supabase/migrations/20261123_marketplace_announcements.sql)
    para habilitar os recados de preço gerenciados pelo painel. A instalação nova
    já inclui essa tabela em `supabase/schema.sql`.
-4. Aplique
+5. Aplique
    [`supabase/migrations/20261123_admin_raffle_controls.sql`](./supabase/migrations/20261123_admin_raffle_controls.sql)
    para permitir excluir sorteios e realizar sorteios antes da data agendada.
-5. Em **Authentication → Users**, cadastre ou confirme as contas que poderão
+6. Em **Authentication → Users**, cadastre ou confirme as contas que poderão
    administrar o painel. A autorização administrativa é mantida separadamente
    em `admin_users`; novos clientes não são adicionados a essa tabela:
 
@@ -29,13 +34,13 @@ campanhas de sorteio.
    values ('UUID_DO_USUARIO_ADMIN');
    ```
 
-5. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no `.env.local`.
+7. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no `.env.local`.
    A chave publishable/anon é usada no navegador; nunca coloque uma chave
    `service_role` no site.
-5. Em **Authentication → URL Configuration**, configure a URL local e adicione
-   `https://kit-feira.vercel.app/conta` à lista de URLs de redirecionamento
-   permitidas para a confirmação de cadastro.
-6. Para envios reais de confirmação de cadastro, configure um servidor SMTP
+8. Em **Authentication → URL Configuration**, configure a URL local e adicione
+   `https://kit-feira.vercel.app/conta*` à lista de URLs de redirecionamento
+   permitidas para a confirmação de cadastro e retorno ao checkout.
+9. Para envios reais de confirmação de cadastro, configure um servidor SMTP
    próprio em **Authentication → SMTP Settings**. O serviço de e-mail padrão
    do Supabase tem limite baixo para testes e pode retornar `email rate limit
    exceeded`; após esse erro, aguarde o limite ser liberado antes de tentar
@@ -45,16 +50,25 @@ O painel não controla estoque. Na aba **Loja Kit Feira**, cadastre, consulte,
 edite, publique/oculte ou exclua kits prontos e produtos avulsos com descrição,
 unidade, preço e foto. Ao excluir um item, os dados dos pedidos anteriores são
 preservados. O checkout registra
-o pedido e os itens com os preços confirmados pelo banco antes de oferecer a
-confirmação pelo WhatsApp `11 97077-3006`; o status inicial fica como aguardando confirmação.
+o pedido e os itens com os preços confirmados pelo banco somente após o cliente
+entrar na conta. A sacola é mantida durante o login e o checkout é retomado ao
+voltar à loja. O pedido fica registrado antes de oferecer a confirmação pelo
+WhatsApp `11 97077-3006`; o status inicial fica como aguardando confirmação.
 Produtos vendidos por kg aceitam quantidades de meio em meio quilo. Clientes
-podem comprar sem conta; quando entram, seus novos pedidos e endereços ficam
-salvos na própria área `/conta`. Contas de clientes veem apenas os próprios
-dados e pedidos; o CRM e os dados de todos os pedidos permanecem restritos aos
-administradores autorizados.
+podem montar a sacola sem conta, mas precisam entrar ou criar uma conta para
+finalizar. Pedidos e endereços ficam salvos na própria área `/conta`. Contas de
+clientes veem apenas os próprios dados e pedidos; o CRM e os dados de todos os
+pedidos permanecem restritos aos administradores autorizados.
 O CEP busca rua, bairro e cidade para o checkout e os endereços da conta. Na
 aba **Recados da feira**, administradores publicam e ocultam chamadas de preço
 que aparecem animadas na loja.
+
+O dashboard da loja resume vendas de pedidos confirmados, gastos registrados,
+produtos mais vendidos e tempo desde a última compra dos clientes. Gastos
+registrados não representam lucro ou margem: o custo de compra não está
+associado individualmente a cada produto vendido. Em **Pedidos**, o administrador
+pode vincular pedidos antigos a uma conta para que apareçam no histórico do
+cliente.
 
 Na aba **Custos de compra**, registre cada compra de fruta ou insumo com
 quantidade, unidade e total pago. O painel compara o preço por unidade com a
@@ -111,3 +125,7 @@ React para que as rotas funcionem também ao abrir o link diretamente.
 Os sorteios continuam disponíveis em seção própria. O CPF permite uma
 inscrição por pessoa em cada sorteio; os resultados só aparecem no site após
 publicação pelo painel.
+
+### Roleta da sorte
+
+Depois das migrações existentes, aplique supabase/migrations/20261124_marketplace_lucky_wheel.sql no Supabase. Cadastre os prêmios e pesos na seção **Prêmios da roleta** do painel administrativo.

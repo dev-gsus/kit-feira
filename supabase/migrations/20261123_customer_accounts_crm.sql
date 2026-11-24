@@ -270,6 +270,10 @@ declare
   kit_row public.marketplace_kits%rowtype;
   line_total numeric(10, 2);
 begin
+  if auth.uid() is null then
+    raise exception using errcode = '42501', message = 'Entre na sua conta para finalizar o pedido.';
+  end if;
+
   if char_length(btrim(coalesce(p_customer_name, ''))) not between 3 and 120
     or coalesce(p_phone, '') !~ '^[0-9]{10,15}$'
     or char_length(btrim(coalesce(p_delivery_address, ''))) not between 3 and 180
@@ -399,7 +403,7 @@ $$;
 revoke all on function public.create_marketplace_order(text, text, text, text, text, text, text, text, text, jsonb)
   from public;
 grant execute on function public.create_marketplace_order(text, text, text, text, text, text, text, text, text, jsonb)
-  to anon, authenticated;
+  to authenticated;
 
 create or replace function public.admin_customer_summary()
 returns table (

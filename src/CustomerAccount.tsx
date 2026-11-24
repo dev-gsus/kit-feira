@@ -137,6 +137,15 @@ function authMessage(message: string) {
   return message;
 }
 
+function safeAuthReturnPath() {
+  const nextPath = new URLSearchParams(window.location.search).get("next");
+  if (!nextPath || !nextPath.startsWith("/") || nextPath.startsWith("//")) return null;
+  const destination = new URL(nextPath, window.location.origin);
+  return destination.origin === window.location.origin
+    ? `${destination.pathname}${destination.search}${destination.hash}`
+    : null;
+}
+
 export default function CustomerAccount({ accountRoute }: { accountRoute: boolean }) {
   const [session, setSession] = useState<Session | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -193,8 +202,9 @@ export default function CustomerAccount({ accountRoute }: { accountRoute: boolea
   }, []);
 
   useEffect(() => {
-    if (!checkingSession && session && !accountRoute) {
-      window.location.replace(appPath("conta"));
+    const returnPath = safeAuthReturnPath();
+    if (!checkingSession && session && (!accountRoute || returnPath)) {
+      window.location.replace(returnPath ?? appPath("conta"));
     }
   }, [accountRoute, checkingSession, session]);
 
@@ -301,6 +311,10 @@ export default function CustomerAccount({ accountRoute }: { accountRoute: boolea
     setAuthNotice("");
 
     if (mode === "signup") {
+      const returnPath = safeAuthReturnPath();
+      const confirmationPath = returnPath
+        ? `${appPath("conta")}?next=${encodeURIComponent(returnPath)}`
+        : appPath("conta");
       const { data, error } = await supabase.auth.signUp({
         email: authEmail.trim().toLowerCase(),
         password: authPassword,
@@ -309,7 +323,7 @@ export default function CustomerAccount({ accountRoute }: { accountRoute: boolea
             full_name: authName.trim(),
             phone: digits(authPhone),
           },
-          emailRedirectTo: new URL(appPath("conta"), window.location.origin).toString(),
+          emailRedirectTo: new URL(confirmationPath, window.location.origin).toString(),
         },
       });
       setAuthSubmitting(false);

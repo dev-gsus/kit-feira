@@ -48,6 +48,7 @@ type OrderItem = {
 
 type MarketplaceOrder = {
   id: string;
+  customer_id: string | null;
   customer_name: string;
   phone: string;
   delivery_address: string;
@@ -81,6 +82,46 @@ type MarketplaceSummary = {
   order_value: number;
   total_purchase_cost: number;
   today_orders: number;
+};
+
+type MarketplaceDashboardTotals = {
+  confirmed_sales: number;
+  purchase_expenses: number;
+  confirmed_orders: number;
+  pending_orders: number;
+  customer_count: number;
+  unlinked_orders: number;
+};
+
+type MarketplaceDashboardMonth = {
+  month: string;
+  sales: number;
+  expenses: number;
+};
+
+type MarketplaceDashboardProduct = {
+  name: string;
+  units_sold: number;
+  revenue: number;
+  orders_count: number;
+};
+
+type MarketplaceCustomerActivity = {
+  user_id: string;
+  full_name: string;
+  email: string;
+  created_at: string;
+  last_purchase_at: string | null;
+  days_since_purchase: number | null;
+  orders_count: number;
+  purchase_total: number;
+};
+
+type MarketplaceDashboard = {
+  totals: MarketplaceDashboardTotals;
+  months: MarketplaceDashboardMonth[];
+  top_products: MarketplaceDashboardProduct[];
+  customer_activity: MarketplaceCustomerActivity[];
 };
 
 type CustomerSummary = {
@@ -143,7 +184,7 @@ type AnnouncementForm = {
   unit: string;
 };
 
-type AdminSection = "overview" | "kits" | "orders" | "customers" | "announcements" | "costs";
+type AdminSection = "overview" | "kits" | "orders" | "customers" | "announcements" | "costs" | "wheel";
 type MarketplaceAdminProps = {
   compact?: boolean;
   onOpenStore?: () => void;
@@ -254,6 +295,46 @@ function isCostComparison(value: unknown): value is CostComparison {
   );
 }
 
+function isMarketplaceDashboard(value: unknown): value is MarketplaceDashboard {
+  if (!isRecord(value) || !isRecord(value.totals)) return false;
+  const totals = value.totals;
+  return (
+    typeof totals.confirmed_sales === "number" &&
+    typeof totals.purchase_expenses === "number" &&
+    typeof totals.confirmed_orders === "number" &&
+    typeof totals.pending_orders === "number" &&
+    typeof totals.customer_count === "number" &&
+    typeof totals.unlinked_orders === "number" &&
+    Array.isArray(value.months) &&
+    value.months.every((month: unknown) =>
+      isRecord(month) &&
+      typeof month.month === "string" &&
+      typeof month.sales === "number" &&
+      typeof month.expenses === "number",
+    ) &&
+    Array.isArray(value.top_products) &&
+    value.top_products.every((product: unknown) =>
+      isRecord(product) &&
+      typeof product.name === "string" &&
+      typeof product.units_sold === "number" &&
+      typeof product.revenue === "number" &&
+      typeof product.orders_count === "number",
+    ) &&
+    Array.isArray(value.customer_activity) &&
+    value.customer_activity.every((customer: unknown) =>
+      isRecord(customer) &&
+      typeof customer.user_id === "string" &&
+      typeof customer.full_name === "string" &&
+      typeof customer.email === "string" &&
+      typeof customer.created_at === "string" &&
+      (customer.last_purchase_at === null || typeof customer.last_purchase_at === "string") &&
+      (customer.days_since_purchase === null || typeof customer.days_since_purchase === "number") &&
+      typeof customer.orders_count === "number" &&
+      typeof customer.purchase_total === "number",
+    )
+  );
+}
+
 function databaseError(message: string, code?: string) {
   return code && ["PGRST202", "PGRST204", "PGRST205"].includes(code)
     ? "O banco ainda não tem as tabelas da loja. Execute novamente o arquivo supabase/schema.sql no Supabase."
@@ -269,6 +350,7 @@ export default function MarketplaceAdmin({
   const [orders, setOrders] = useState<MarketplaceOrder[]>([]);
   const [costs, setCosts] = useState<PurchaseCost[]>([]);
   const [summary, setSummary] = useState<MarketplaceSummary | null>(null);
+  const [dashboard, setDashboard] = useState<MarketplaceDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingKitId, setDeletingKitId] = useState<string | null>(null);
@@ -292,6 +374,9 @@ export default function MarketplaceAdmin({
   const [announcementSaving, setAnnouncementSaving] = useState(false);
   const [announcementError, setAnnouncementError] = useState("");
   const [announcementReload, setAnnouncementReload] = useState(0);
+  const [wheelPrizes, setWheelPrizes] = useState<{ id: string; label: string; weight: number; is_active: boolean }[]>([]);
+  const [wheelPrizeLabel, setWheelPrizeLabel] = useState("");
+  const [wheelPrizeWeight, setWheelPrizeWeight] = useState("1");
 
   const recentOrders = useMemo(() => orders.slice(0, 5), [orders]);
   const visibleCustomers = useMemo(() => {
@@ -312,7 +397,15 @@ export default function MarketplaceAdmin({
 
     setLoading(true);
     setError("");
-    const [kitResult, orderResult, costResult, summaryResult] = await Promise.all([
+    const orderFields = "id, customer_id, customer_name, phone, delivery_address, address_number, neighborhood, complement, postal_code, city, payment_method, status, total, created_at";
+    const [
+      kitResult,
+      recentOrderResult,
+      unlinkedOrderResult,
+      costResult,
+      summaryResult,
+      dashboardResult,
+    ] = await Promise.all([
       supabase
         .from("marketplace_kits")
         .select("id, name, description, contents, image_url, price, product_type, sale_unit, is_active, is_featured, display_order, created_at")
@@ -320,9 +413,14 @@ export default function MarketplaceAdmin({
         .order("created_at", { ascending: false }),
       supabase
         .from("marketplace_orders")
-        .select("id, customer_name, phone, delivery_address, address_number, neighborhood, complement, postal_code, city, payment_method, status, total, created_at")
+        .select(orderFields)
         .order("created_at", { ascending: false })
         .limit(50),
+      supabase
+        .from("marketplace_orders")
+        .select(orderFields)
+        .is("customer_id", null)
+        .order("created_at", { ascending: false }),
       supabase
         .from("purchase_costs")
         .select("id, item_name, quantity, unit, total_cost, unit_cost, purchased_on, notes")
@@ -330,17 +428,39 @@ export default function MarketplaceAdmin({
         .order("created_at", { ascending: false })
         .limit(50),
       supabase.rpc("admin_marketplace_summary"),
+      supabase.rpc("admin_marketplace_dashboard"),
     ]);
 
     const initialError =
-      kitResult.error ?? orderResult.error ?? costResult.error ?? summaryResult.error;
+      kitResult.error ??
+      recentOrderResult.error ??
+      unlinkedOrderResult.error ??
+      costResult.error ??
+      summaryResult.error ??
+      dashboardResult.error;
     if (initialError) {
-      setError(databaseError(initialError.message, initialError.code));
+      setError(
+        dashboardResult.error && ["PGRST202", "PGRST204", "PGRST205"].includes(dashboardResult.error.code ?? "")
+          ? "Aplique supabase/migrations/20261123_admin_dashboard_required_login.sql no Supabase para habilitar o dashboard."
+          : databaseError(initialError.message, initialError.code),
+      );
       setLoading(false);
       return;
     }
 
-    const nextOrders = (orderResult.data ?? []) as Omit<MarketplaceOrder, "items">[];
+    if (!isMarketplaceDashboard(dashboardResult.data)) {
+      setError("O dashboard recebeu dados em um formato inesperado. Tente atualizar a página.");
+      setLoading(false);
+      return;
+    }
+
+    const orderMap = new Map<string, Omit<MarketplaceOrder, "items">>();
+    for (const order of [...(recentOrderResult.data ?? []), ...(unlinkedOrderResult.data ?? [])]) {
+      orderMap.set(order.id, order as Omit<MarketplaceOrder, "items">);
+    }
+    const nextOrders = [...orderMap.values()].sort(
+      (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+    );
     let orderItems: OrderItem[] = [];
     if (nextOrders.length > 0) {
       const { data, error: itemError } = await supabase
@@ -372,6 +492,7 @@ export default function MarketplaceAdmin({
       })),
     );
     setCosts((costResult.data ?? []) as PurchaseCost[]);
+    setDashboard(dashboardResult.data);
     setSummary(
       summaryRow
         ? (summaryRow as MarketplaceSummary)
@@ -392,7 +513,40 @@ export default function MarketplaceAdmin({
   }, []);
 
   useEffect(() => {
-    if (section !== "customers") return;
+    if (section !== "wheel" || !supabase) return;
+    void supabase.from("marketplace_wheel_prizes").select("id, label, weight, is_active").order("created_at").then(({ data, error: loadError }) => {
+      if (loadError) setError(databaseError(loadError.message, loadError.code));
+      else setWheelPrizes((data ?? []) as typeof wheelPrizes);
+    });
+  }, [section]);
+
+  async function addWheelPrize(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase) return;
+    const label = wheelPrizeLabel.trim();
+    const weight = Number(wheelPrizeWeight);
+    if (!label || !Number.isInteger(weight) || weight < 1 || weight > 10000) {
+      setError("Informe o prêmio e um peso entre 1 e 10000.");
+      return;
+    }
+    const { error: saveError } = await supabase.from("marketplace_wheel_prizes").insert({ label, weight });
+    if (saveError) { setError(databaseError(saveError.message, saveError.code)); return; }
+    setWheelPrizeLabel("");
+    setWheelPrizeWeight("1");
+    setNotice("Prêmio adicionado à roleta.");
+    const { data } = await supabase.from("marketplace_wheel_prizes").select("id, label, weight, is_active").order("created_at");
+    setWheelPrizes((data ?? []) as typeof wheelPrizes);
+  }
+
+  async function removeWheelPrize(id: string) {
+    if (!supabase) return;
+    const { error: removeError } = await supabase.from("marketplace_wheel_prizes").delete().eq("id", id);
+    if (removeError) setError(removeError.message);
+    else setWheelPrizes((current) => current.filter((prize) => prize.id !== id));
+  }
+
+  useEffect(() => {
+    if (section !== "customers" && section !== "orders") return;
     if (!supabase) {
       setCustomersError("O banco de dados não está configurado neste ambiente.");
       return;
@@ -650,6 +804,38 @@ export default function MarketplaceAdmin({
     await loadData();
   }
 
+  async function linkOrderCustomer(order: MarketplaceOrder, nextCustomerId: string) {
+    const customerId = nextCustomerId || null;
+    if (!supabase || customerId === order.customer_id || savingOrderId) return;
+
+    setSavingOrderId(order.id);
+    setError("");
+    setNotice("");
+    const { data, error: updateError } = await supabase
+      .from("marketplace_orders")
+      .update({ customer_id: customerId, updated_at: new Date().toISOString() })
+      .eq("id", order.id)
+      .select("id")
+      .maybeSingle();
+    setSavingOrderId(null);
+    if (updateError) {
+      setError(`Não foi possível vincular o cliente ao pedido: ${updateError.message}`);
+      return;
+    }
+    if (!data) {
+      setError("Este pedido não foi encontrado ou não pode ser atualizado.");
+      return;
+    }
+
+    const customer = customers.find((item) => item.user_id === customerId);
+    setNotice(
+      customer
+        ? `Pedido ${order.id.slice(0, 8).toUpperCase()} vinculado a ${customer.full_name || customer.email}.`
+        : `Vínculo removido do pedido ${order.id.slice(0, 8).toUpperCase()}.`,
+    );
+    await loadData();
+  }
+
   function updateCostForm<K extends keyof CostForm>(key: K, value: CostForm[K]) {
     setCostForm((current) => ({ ...current, [key]: value }));
   }
@@ -796,6 +982,7 @@ export default function MarketplaceAdmin({
             ["customers", "Clientes"],
             ["announcements", "Recados da feira"],
             ["costs", "Custos de compra"],
+            ["wheel", "Prêmios da roleta"],
           ] as const).map(([id, label]) => (
             <button
               className={section === id ? "marketplace-admin-tab selected" : "marketplace-admin-tab"}
@@ -839,6 +1026,132 @@ export default function MarketplaceAdmin({
               <strong>{currency(summary?.order_value ?? 0)}</strong><span>pedidos não cancelados</span>
             </article>
           </div>
+          {dashboard && (
+            <section className="marketplace-dashboard">
+              <div className="marketplace-admin-toolbar marketplace-dashboard-heading">
+                <div>
+                  <h2>Desempenho da loja</h2>
+                  <p>Vendas confirmadas, gastos registrados e atividade dos clientes.</p>
+                </div>
+                {dashboard.totals.unlinked_orders > 0 && (
+                  <button
+                    className="marketplace-dashboard-unlinked"
+                    type="button"
+                    onClick={() => compact ? onOpenStore?.() : setSection("orders")}
+                  >
+                    {dashboard.totals.unlinked_orders} {dashboard.totals.unlinked_orders === 1 ? "pedido sem cliente" : "pedidos sem cliente"}
+                    {!compact && <ArrowRight size={13} />}
+                  </button>
+                )}
+              </div>
+              <div className="marketplace-dashboard-stats">
+                <article>
+                  <span>VENDAS CONFIRMADAS</span>
+                  <strong>{currency(dashboard.totals.confirmed_sales)}</strong>
+                  <small>{dashboard.totals.confirmed_orders} pedidos confirmados</small>
+                </article>
+                <article>
+                  <span>GASTOS REGISTRADOS</span>
+                  <strong>{currency(dashboard.totals.purchase_expenses)}</strong>
+                  <small>compras de frutas e insumos</small>
+                </article>
+                <article>
+                  <span>AGUARDANDO CONFIRMAÇÃO</span>
+                  <strong>{dashboard.totals.pending_orders}</strong>
+                  <small>pedidos ainda pendentes</small>
+                </article>
+                <article>
+                  <span>CLIENTES CADASTRADOS</span>
+                  <strong>{dashboard.totals.customer_count}</strong>
+                  <small>contas não administrativas</small>
+                </article>
+              </div>
+              <div className="marketplace-dashboard-grid">
+                <section className="marketplace-dashboard-panel">
+                  <div className="marketplace-dashboard-panel-heading">
+                    <div><h3>Vendas e gastos</h3><p>Últimos seis meses</p></div>
+                    <div className="marketplace-dashboard-legend">
+                      <span><i className="sales" />Vendas</span>
+                      <span><i className="expenses" />Gastos</span>
+                    </div>
+                  </div>
+                  <div className="marketplace-dashboard-chart" role="img" aria-label="Vendas e gastos mensais nos últimos seis meses">
+                    {dashboard.months.map((month) => {
+                      const highestValue = Math.max(
+                        1,
+                        ...dashboard.months.flatMap((item) => [item.sales, item.expenses]),
+                      );
+                      const salesHeight = month.sales > 0 ? Math.max(4, month.sales / highestValue * 100) : 0;
+                      const expensesHeight = month.expenses > 0 ? Math.max(4, month.expenses / highestValue * 100) : 0;
+                      const monthDate = new Date(`${month.month}-01T12:00:00`);
+                      const monthLabel = new Intl.DateTimeFormat("pt-BR", { month: "short" })
+                        .format(monthDate)
+                        .replace(".", "");
+                      return (
+                        <div className="marketplace-dashboard-month" key={month.month}>
+                          <div className="marketplace-dashboard-bars">
+                            <span
+                              className="sales"
+                              style={{ height: `${salesHeight}%` }}
+                              title={`Vendas: ${currency(month.sales)}`}
+                            />
+                            <span
+                              className="expenses"
+                              style={{ height: `${expensesHeight}%` }}
+                              title={`Gastos: ${currency(month.expenses)}`}
+                            />
+                          </div>
+                          <small>{monthLabel}</small>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+                <section className="marketplace-dashboard-panel">
+                  <div className="marketplace-dashboard-panel-heading">
+                    <div><h3>Produtos mais vendidos</h3><p>Por quantidade em pedidos confirmados</p></div>
+                  </div>
+                  {dashboard.top_products.length ? (
+                    <div className="marketplace-dashboard-list">
+                      {dashboard.top_products.map((product, index) => (
+                        <article key={`${product.name}-${index}`}>
+                          <span className="marketplace-dashboard-rank">{index + 1}</span>
+                          <div><strong>{product.name}</strong><small>{product.orders_count} pedidos · {currency(product.revenue)}</small></div>
+                          <b>{formatQuantity(product.units_sold)}</b>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="marketplace-dashboard-empty">Os produtos mais vendidos aparecerão após a confirmação dos primeiros pedidos.</div>
+                  )}
+                </section>
+              </div>
+              <section className="marketplace-dashboard-panel marketplace-dashboard-activity">
+                <div className="marketplace-dashboard-panel-heading">
+                  <div><h3>Clientes há mais tempo sem comprar</h3><p>Mostra a última compra confirmada ou indica quem ainda não comprou.</p></div>
+                </div>
+                {dashboard.customer_activity.length ? (
+                  <div className="marketplace-admin-table-wrap">
+                    <table className="marketplace-admin-table marketplace-dashboard-customer-table">
+                      <thead><tr><th>Cliente</th><th>Última compra</th><th>Tempo sem comprar</th><th>Pedidos</th></tr></thead>
+                      <tbody>
+                        {dashboard.customer_activity.slice(0, 8).map((customer) => (
+                          <tr key={customer.user_id}>
+                            <td><strong>{customer.full_name || customer.email || "Cliente Kit Feira"}</strong><small>{customer.email}</small></td>
+                            <td>{customer.last_purchase_at ? shortDateTime(customer.last_purchase_at) : "Nunca comprou"}</td>
+                            <td>{customer.days_since_purchase === null ? "—" : `${customer.days_since_purchase} ${customer.days_since_purchase === 1 ? "dia" : "dias"}`}</td>
+                            <td>{customer.orders_count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="marketplace-dashboard-empty">Os clientes cadastrados aparecerão aqui após a primeira compra.</div>
+                )}
+              </section>
+            </section>
+          )}
           <div className="marketplace-admin-toolbar">
             <div><h2>Pedidos recentes</h2><p>Os pedidos ficam registrados antes da confirmação pelo WhatsApp.</p></div>
             <button
@@ -1044,8 +1357,9 @@ export default function MarketplaceAdmin({
       {section === "orders" && (
         <div>
           <div className="marketplace-admin-toolbar">
-            <div><h2>Pedidos da loja</h2><p>O pedido é registrado no checkout e confirmado pelo WhatsApp.</p></div>
+            <div><h2>Pedidos da loja</h2><p>Vincule pedidos antigos sem conta ao perfil correto do cliente.</p></div>
           </div>
+          {customersError && <div className="marketplace-admin-error"><CircleAlert size={15} /> {customersError}</div>}
           {orders.length ? (
             <div className="marketplace-admin-table-wrap">
               <table className="marketplace-admin-table">
@@ -1066,6 +1380,26 @@ export default function MarketplaceAdmin({
                           {order.complement && <span>{order.complement}</span>}
                           <span>{order.neighborhood} · {order.city}{order.postal_code ? ` · CEP ${order.postal_code}` : ""}</span>
                         </details>
+                        <label className="marketplace-order-customer-link">
+                          Vincular conta
+                          <select
+                            value={order.customer_id ?? ""}
+                            disabled={customersLoading || Boolean(customersError) || savingOrderId === order.id}
+                            onChange={(event) => void linkOrderCustomer(order, event.target.value)}
+                            aria-label={`Vincular cliente ao pedido ${order.id.slice(0, 8)}`}
+                          >
+                            <option value="">Sem vínculo</option>
+                            {order.customer_id && !customers.some((customer) => customer.user_id === order.customer_id) && (
+                              <option value={order.customer_id}>Perfil não localizado</option>
+                            )}
+                            {customers.map((customer) => (
+                              <option value={customer.user_id} key={customer.user_id}>
+                                {customer.full_name || customer.email || "Cliente Kit Feira"}
+                              </option>
+                            ))}
+                          </select>
+                          {savingOrderId === order.id && <small>Salvando vínculo...</small>}
+                        </label>
                       </td>
                       <td>{paymentLabels[order.payment_method] ?? order.payment_method}</td>
                       <td>{shortDateTime(order.created_at)}</td>
@@ -1237,6 +1571,31 @@ export default function MarketplaceAdmin({
           ) : !announcementError ? (
             <div className="marketplace-admin-empty">Seus recados de preço e novidades aparecerão aqui depois de publicados.</div>
           ) : null}
+        </div>
+      )}
+
+      {section === "wheel" && (
+        <div>
+          <div className="marketplace-admin-toolbar">
+            <div><h2>Prêmios da roleta</h2><p>Clientes com login podem girar uma vez para cada pedido realizado. O peso define a chance relativa de cada prêmio.</p></div>
+          </div>
+          <form className="marketplace-announcement-form" onSubmit={(event) => void addWheelPrize(event)}>
+            <div className="marketplace-announcement-fields">
+              <label>Prêmio *<input value={wheelPrizeLabel} onChange={(event) => setWheelPrizeLabel(event.target.value)} maxLength={100} placeholder="Ex.: 5% de desconto" required /></label>
+              <label>Peso (chance relativa)<input type="number" min="1" max="10000" step="1" value={wheelPrizeWeight} onChange={(event) => setWheelPrizeWeight(event.target.value)} required /></label>
+            </div>
+            <button className="button button-dark marketplace-announcement-submit" type="submit">Adicionar prêmio <Plus size={15} /></button>
+          </form>
+          {wheelPrizes.length ? (
+            <div className="marketplace-announcement-list">
+              {wheelPrizes.map((prize) => (
+                <article className="marketplace-announcement-row active" key={prize.id}>
+                  <i><ShoppingBag size={16} /></i><div><strong>{prize.label}</strong><small>Peso {prize.weight}</small></div>
+                  <button type="button" className="admin-secondary-button" onClick={() => void removeWheelPrize(prize.id)}>Remover</button>
+                </article>
+              ))}
+            </div>
+          ) : <div className="marketplace-admin-empty">Cadastre pelo menos um prêmio para liberar a roleta.</div>}
         </div>
       )}
 
