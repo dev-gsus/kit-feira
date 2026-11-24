@@ -143,6 +143,18 @@ function PublicSite() {
   const registrationCount = raffle ? registrationCounts[raffle.id] ?? 0 : 0;
 
   useEffect(() => {
+    const requestedRaffleId = new URLSearchParams(window.location.search).get("sorteio");
+    if (
+      !loading &&
+      raffle &&
+      raffle.id === requestedRaffleId &&
+      window.location.hash === "#form-inscricao"
+    ) {
+      document.getElementById("form-inscricao")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [loading, raffle]);
+
+  useEffect(() => {
     let active = true;
 
     async function loadPageData() {
@@ -494,6 +506,7 @@ function PublicSite() {
                 onClick={async () => {
                   const url = new URL(window.location.href);
                   url.searchParams.set("sorteio", raffle.id);
+                  url.hash = "form-inscricao";
                   try {
                     await navigator.clipboard.writeText(url.toString());
                     setRaffleLinkCopied(true);
@@ -567,7 +580,7 @@ function PublicSite() {
               </div>
             )}
 
-            <form className="entry-form" onSubmit={handleSubmit}>
+            <form className="entry-form" id="form-inscricao" onSubmit={handleSubmit}>
               <label>
                 Seu nome completo
                 <input
