@@ -1267,13 +1267,13 @@ export default function MarketplaceAdmin({
                   <div className="marketplace-kit-field full">
                     Foto do produto <span className="marketplace-product-optional">(opcional)</span>
                     <label className="marketplace-kit-image">
-                      <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setKitImage(event.target.files?.[0] ?? null)} />
+                      <input type="file" accept="image/*" capture="environment" onChange={(event) => setKitImage(event.target.files?.[0] ?? null)} />
                       {kitImage ? (
                         <><ImagePlus size={20} /><span><strong>{kitImage.name}</strong><small>Clique para escolher outra foto</small></span></>
                       ) : editingKitId && kits.find((kit) => kit.id === editingKitId)?.image_url ? (
-                        <><img src={kits.find((kit) => kit.id === editingKitId)?.image_url ?? ""} alt="" /><span><strong>Foto atual</strong><small>Clique para trocar · JPG, PNG ou WEBP até 5 MB</small></span></>
+                        <><img src={kits.find((kit) => kit.id === editingKitId)?.image_url ?? ""} alt="" /><span><strong>Foto atual</strong><small>Troque pela foto do celular · vertical 4:5 recomendada · JPG, PNG ou WEBP até 5 MB</small></span></>
                       ) : (
-                        <><ImagePlus size={20} /><span><strong>Adicionar foto</strong><small>JPG, PNG ou WEBP · até 5 MB</small></span></>
+                        <><ImagePlus size={20} /><span><strong>Adicionar foto do celular</strong><small>Vertical 4:5 recomendada · JPG, PNG ou WEBP · até 5 MB</small></span></>
                       )}
                     </label>
                   </div>

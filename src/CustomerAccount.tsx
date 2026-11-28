@@ -203,9 +203,17 @@ export default function CustomerAccount({ accountRoute }: { accountRoute: boolea
 
   useEffect(() => {
     const returnPath = safeAuthReturnPath();
-    if (!checkingSession && session && (!accountRoute || returnPath)) {
-      window.location.replace(returnPath ?? appPath("conta"));
+    let active = true;
+    async function routeSession() {
+      if (checkingSession || !session) return;
+      const { data } = await supabase!.rpc("is_feira_admin");
+      if (!active) return;
+      if (!accountRoute || returnPath) {
+        window.location.replace(returnPath ?? appPath(data === true ? "admin" : "conta"));
+      }
     }
+    if (supabase) void routeSession();
+    return () => { active = false; };
   }, [accountRoute, checkingSession, session]);
 
   async function loadAccount(userId: string, isActive: () => boolean = () => true) {

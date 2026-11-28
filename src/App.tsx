@@ -99,15 +99,21 @@ function Brand() {
 
 function CustomerAuthLink({ className }: { className?: string }) {
   const [signedIn, setSignedIn] = useState(false);
+  const [admin, setAdmin] = useState(false);
 
   useEffect(() => {
     if (!supabase) return;
     let active = true;
-    void supabase.auth.getSession().then(({ data }) => {
-      if (active) setSignedIn(Boolean(data.session));
-    });
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const applySession = async (session: import("@supabase/supabase-js").Session | null) => {
+      if (!active) return;
       setSignedIn(Boolean(session));
+      if (!session) { setAdmin(false); return; }
+      const { data } = await supabase!.rpc("is_feira_admin");
+      if (active) setAdmin(data === true);
+    };
+    void supabase.auth.getSession().then(({ data }) => applySession(data.session));
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      window.setTimeout(() => void applySession(session), 0);
     });
     return () => {
       active = false;
@@ -116,8 +122,14 @@ function CustomerAuthLink({ className }: { className?: string }) {
   }, []);
 
   return (
-    <a className={className} href={appPath(signedIn ? "conta" : "login")}>
-      {signedIn ? "Minha conta" : "Login"}
+    <a className={className} href={appPath(admin ? "admin" : signedIn ? "conta" : "login")} onClick={signedIn ? (event) => {
+      event.preventDefault();
+      void (async () => {
+        const { data } = await supabase!.rpc("is_feira_admin");
+        window.location.assign(appPath(data === true ? "admin" : "conta"));
+      })();
+    } : undefined}>
+      {admin ? "Painel administrativo" : signedIn ? "Minha conta" : "Login"}
     </a>
   );
 }

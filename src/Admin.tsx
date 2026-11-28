@@ -931,8 +931,8 @@ function AdminApp() {
                   <div className="editor-field editor-full">
                     <span className="editor-label">Foto do prêmio ou da campanha</span>
                     <label className="image-upload">
-                      <input type="file" accept="image/*" onChange={(event) => setSelectedImage(event.target.files?.[0] ?? null)} />
-                      {selectedImage ? <><ImagePlus size={18} /><span>{selectedImage.name}</span><small>Trocar imagem</small></> : raffleForm.photo_url ? <><img src={raffleForm.photo_url} alt="Prévia do sorteio" /><span>Foto atual</span><small>Trocar imagem</small></> : <><ImagePlus size={20} /><span>Escolha uma imagem do seu dispositivo</span><small>JPG, PNG ou WEBP · até 5 MB</small></>}
+                      <input type="file" accept="image/*" capture="environment" onChange={(event) => setSelectedImage(event.target.files?.[0] ?? null)} />
+                      {selectedImage ? <><ImagePlus size={18} /><span>{selectedImage.name}</span><small>Trocar imagem</small></> : raffleForm.photo_url ? <><img src={raffleForm.photo_url} alt="Prévia do sorteio" /><span>Foto atual</span><small>Trocar imagem</small></> : <><ImagePlus size={20} /><span>Escolha uma foto do celular</span><small>Foto vertical 4:5 recomendada · JPG, PNG ou WEBP · até 5 MB</small></>}
                     </label>
                   </div>
                   <label className="editor-field"><span className="date-label"><CalendarDays size={15} /> Início das inscrições *</span><input type="datetime-local" value={raffleForm.starts_at} onChange={(event) => updateForm("starts_at", event.target.value)} required /></label>
