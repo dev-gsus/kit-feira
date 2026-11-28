@@ -34,13 +34,17 @@ campanhas de sorteio.
    values ('UUID_DO_USUARIO_ADMIN');
    ```
 
-7. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no `.env.local`.
+7. Aplique [`supabase/migrations/20261128_admin_order_editor.sql`](./supabase/migrations/20261128_admin_order_editor.sql)
+   para habilitar a edição segura dos dados e itens dos pedidos existentes. A
+   instalação nova também pode executar a versão atualizada de `schema.sql`.
+
+8. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no `.env.local`.
    A chave publishable/anon é usada no navegador; nunca coloque uma chave
    `service_role` no site.
-8. Em **Authentication → URL Configuration**, configure a URL local e adicione
+9. Em **Authentication → URL Configuration**, configure a URL local e adicione
    `https://kit-feira.vercel.app/conta*` à lista de URLs de redirecionamento
    permitidas para a confirmação de cadastro e retorno ao checkout.
-9. Para envios reais de confirmação de cadastro, configure um servidor SMTP
+10. Para envios reais de confirmação de cadastro, configure um servidor SMTP
    próprio em **Authentication → SMTP Settings**. O serviço de e-mail padrão
    do Supabase tem limite baixo para testes e pode retornar `email rate limit
    exceeded`; após esse erro, aguarde o limite ser liberado antes de tentar

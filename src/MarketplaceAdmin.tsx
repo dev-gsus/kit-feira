@@ -17,6 +17,7 @@ import {
   TrendingDown,
   TrendingUp,
   Users,
+  X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import "./marketplace.css";
@@ -39,11 +40,28 @@ type AdminKit = {
 type OrderItem = {
   id: string;
   order_id: string;
+  kit_id: string | null;
   kit_name: string;
   quantity: number;
   unit_label: string;
   unit_price: number;
   line_total: number;
+};
+
+type OrderEditorDraft = {
+  customer_id: string;
+  customer_name: string;
+  phone: string;
+  delivery_address: string;
+  address_number: string;
+  neighborhood: string;
+  complement: string;
+  postal_code: string;
+  city: string;
+  payment_method: string;
+  status: MarketplaceOrder["status"];
+  created_at: string;
+  items: { kit_id: string | null; kit_name: string; quantity: string; unit_label: string; unit_price: string }[];
 };
 
 type MarketplaceOrder = {
@@ -363,6 +381,8 @@ export default function MarketplaceAdmin({
   const [costForm, setCostForm] = useState<CostForm>(emptyCostForm);
   const [costComparison, setCostComparison] = useState<CostComparison | null>(null);
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+  const [editingOrder, setEditingOrder] = useState<MarketplaceOrder | null>(null);
+  const [orderDraft, setOrderDraft] = useState<OrderEditorDraft | null>(null);
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customersError, setCustomersError] = useState("");
@@ -465,7 +485,7 @@ export default function MarketplaceAdmin({
     if (nextOrders.length > 0) {
       const { data, error: itemError } = await supabase
         .from("marketplace_order_items")
-        .select("id, order_id, kit_name, quantity, unit_label, unit_price, line_total")
+        .select("id, order_id, kit_id, kit_name, quantity, unit_label, unit_price, line_total")
         .in("order_id", nextOrders.map((order) => order.id));
       if (itemError) {
         setError(`Não foi possível carregar os itens dos pedidos: ${itemError.message}`);
@@ -801,6 +821,94 @@ export default function MarketplaceAdmin({
       return;
     }
     setNotice(`Pedido ${order.id.slice(0, 8).toUpperCase()} atualizado.`);
+    await loadData();
+  }
+
+  function openOrderEditor(order: MarketplaceOrder) {
+    const localOrderDate = new Date(order.created_at);
+    localOrderDate.setMinutes(localOrderDate.getMinutes() - localOrderDate.getTimezoneOffset());
+    setEditingOrder(order);
+    setOrderDraft({
+      customer_id: order.customer_id ?? "",
+      customer_name: order.customer_name,
+      phone: order.phone,
+      delivery_address: order.delivery_address,
+      address_number: order.address_number,
+      neighborhood: order.neighborhood,
+      complement: order.complement,
+      postal_code: order.postal_code,
+      city: order.city,
+      payment_method: order.payment_method,
+      status: order.status,
+      created_at: localOrderDate.toISOString().slice(0, 16),
+      items: order.items.map((item) => ({
+        kit_id: item.kit_id,
+        kit_name: item.kit_name,
+        quantity: String(item.quantity),
+        unit_label: item.unit_label,
+        unit_price: String(item.unit_price),
+      })),
+    });
+    setError("");
+    setNotice("");
+  }
+
+  async function saveOrderEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || !editingOrder || !orderDraft) return;
+    if (!orderDraft.items.length) {
+      setError("O pedido precisa ter pelo menos um item.");
+      return;
+    }
+    const items = orderDraft.items.map((item) => ({
+      ...item,
+      quantity: Number(item.quantity),
+      unit_price: Number(item.unit_price.replace(",", ".")),
+    }));
+    if (items.some((item) => !item.kit_name.trim() || !item.unit_label.trim() || !Number.isFinite(item.quantity) || item.quantity <= 0 || item.quantity > 20 || !Number.isFinite(item.unit_price) || item.unit_price < 0)) {
+      setError("Confira nome, quantidade (até 20) e preço de cada item.");
+      return;
+    }
+    const cleanPhone = phoneDigits(orderDraft.phone);
+    if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+      setError("Informe um telefone com DDD válido.");
+      return;
+    }
+    const orderPayload = {
+      customer_id: orderDraft.customer_id || null,
+      customer_name: orderDraft.customer_name.trim(),
+      phone: cleanPhone,
+      delivery_address: orderDraft.delivery_address.trim(),
+      address_number: orderDraft.address_number.trim(),
+      neighborhood: orderDraft.neighborhood.trim(),
+      complement: orderDraft.complement.trim(),
+      postal_code: phoneDigits(orderDraft.postal_code),
+      city: orderDraft.city.trim(),
+      payment_method: orderDraft.payment_method,
+      status: orderDraft.status,
+      created_at: new Date(orderDraft.created_at).toISOString(),
+    };
+    if (orderPayload.customer_name.length < 3 || !orderPayload.delivery_address || !orderPayload.address_number || !orderPayload.neighborhood || !orderPayload.city) {
+      setError("Preencha nome, endereço, número, bairro e cidade.");
+      return;
+    }
+    setSavingOrderId(editingOrder.id);
+    setError("");
+    const { error: saveError } = await supabase.rpc("admin_update_marketplace_order", {
+      p_order_id: editingOrder.id,
+      p_order: orderPayload,
+      p_items: items,
+    });
+    setSavingOrderId(null);
+    if (saveError) {
+      setError(saveError.code === "PGRST202" || saveError.code === "42883"
+        ? "A edição de pedidos ainda não foi habilitada no banco. Aplique supabase/migrations/20261128_admin_order_editor.sql no Supabase e tente novamente."
+        : `Não foi possível salvar o pedido: ${saveError.message}`);
+      return;
+    }
+    setEditingOrder(null);
+    setOrderDraft(null);
+    setNotice(`Pedido ${editingOrder.id.slice(0, 8).toUpperCase()} atualizado com sucesso.`);
     await loadData();
   }
 
@@ -1370,6 +1478,7 @@ export default function MarketplaceAdmin({
                       <td>
                         <strong>#{order.id.slice(0, 8).toUpperCase()}</strong>
                         <small>{order.items.map((item) => `${formatQuantity(item.quantity)} ${item.unit_label} · ${item.kit_name}`).join(", ")}</small>
+                        <button className="admin-secondary-button marketplace-order-edit" type="button" onClick={() => openOrderEditor(order)} disabled={savingOrderId === order.id}><Pencil size={13} /> Editar pedido</button>
                       </td>
                       <td>
                         <strong>{order.customer_name}</strong>
@@ -1671,6 +1780,33 @@ export default function MarketplaceAdmin({
           ) : !loading ? (
             <div className="marketplace-admin-empty">O histórico de custos aparecerá aqui após o primeiro registro.</div>
           ) : null}
+        </div>
+      )}
+
+      {editingOrder && orderDraft && (
+        <div className="market-cost-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingOrderId) { setEditingOrder(null); setOrderDraft(null); } }}>
+          <form className="market-order-editor" onSubmit={(event) => void saveOrderEdit(event)} role="dialog" aria-modal="true" aria-labelledby="market-order-editor-title">
+            <div className="market-order-editor-heading"><div><span className="admin-kicker">GESTÃO DA LOJA · PEDIDOS</span><h2 id="market-order-editor-title">Editar pedido #{editingOrder.id.slice(0, 8).toUpperCase()}</h2><p>Altere cliente, entrega, pagamento, data, status e todos os itens. O total é recalculado ao salvar.</p></div><button type="button" className="icon-button" aria-label="Fechar edição" disabled={Boolean(savingOrderId)} onClick={() => { setEditingOrder(null); setOrderDraft(null); }}><X size={17} /></button></div>
+            <div className="market-order-editor-grid">
+              <label>Nome do cliente<input required minLength={3} maxLength={120} value={orderDraft.customer_name} onChange={(event) => setOrderDraft({ ...orderDraft, customer_name: event.target.value })} /></label>
+              <label>Telefone<input required inputMode="tel" value={orderDraft.phone} onChange={(event) => setOrderDraft({ ...orderDraft, phone: event.target.value })} /></label>
+              <label>Rua / endereço<input required value={orderDraft.delivery_address} onChange={(event) => setOrderDraft({ ...orderDraft, delivery_address: event.target.value })} /></label>
+              <label>Número<input required value={orderDraft.address_number} onChange={(event) => setOrderDraft({ ...orderDraft, address_number: event.target.value })} /></label>
+              <label>Bairro<input required value={orderDraft.neighborhood} onChange={(event) => setOrderDraft({ ...orderDraft, neighborhood: event.target.value })} /></label>
+              <label>Cidade<input required value={orderDraft.city} onChange={(event) => setOrderDraft({ ...orderDraft, city: event.target.value })} /></label>
+              <label>Complemento<input value={orderDraft.complement} onChange={(event) => setOrderDraft({ ...orderDraft, complement: event.target.value })} /></label>
+              <label>CEP<input inputMode="numeric" maxLength={9} value={orderDraft.postal_code} onChange={(event) => setOrderDraft({ ...orderDraft, postal_code: event.target.value })} /></label>
+              <label>Pagamento<select value={orderDraft.payment_method} onChange={(event) => setOrderDraft({ ...orderDraft, payment_method: event.target.value })}><option value="pix">Pix</option><option value="cash_on_delivery">Dinheiro na entrega</option><option value="card_on_delivery">Cartão na entrega</option></select></label>
+              <label>Status<select value={orderDraft.status} onChange={(event) => setOrderDraft({ ...orderDraft, status: event.target.value as MarketplaceOrder["status"] })}>{orderStatuses.map((status) => <option value={status} key={status}>{orderStatusLabels[status]}</option>)}</select></label>
+              <label>Data do pedido<input type="datetime-local" required value={orderDraft.created_at} onChange={(event) => setOrderDraft({ ...orderDraft, created_at: event.target.value })} /></label>
+              <label>Conta vinculada<select value={orderDraft.customer_id} onChange={(event) => setOrderDraft({ ...orderDraft, customer_id: event.target.value })}><option value="">Sem vínculo</option>{customers.map((customer) => <option key={customer.user_id} value={customer.user_id}>{customer.full_name || customer.email || customer.phone}</option>)}</select></label>
+            </div>
+            <div className="market-order-items-editor-heading"><div><strong>Itens do pedido</strong><small>Atualize nomes, quantidades, unidades e preços unitários.</small></div><button className="admin-secondary-button" type="button" onClick={() => setOrderDraft({ ...orderDraft, items: [...orderDraft.items, { kit_id: null, kit_name: "", quantity: "1", unit_label: "unidade", unit_price: "0" }] })}><Plus size={13} /> Adicionar item</button></div>
+            <div className="market-order-items-editor">{orderDraft.items.map((item, index) => <div className="market-order-item-edit-row" key={`${editingOrder.id}-${index}`}><label>Item<input required value={item.kit_name} onChange={(event) => setOrderDraft({ ...orderDraft, items: orderDraft.items.map((line, lineIndex) => lineIndex === index ? { ...line, kit_name: event.target.value, kit_id: null } : line) })} /></label><label>Qtd.<input type="number" min="0.001" max="20" step="0.001" required value={item.quantity} onChange={(event) => setOrderDraft({ ...orderDraft, items: orderDraft.items.map((line, lineIndex) => lineIndex === index ? { ...line, quantity: event.target.value } : line) })} /></label><label>Unidade<input required maxLength={20} value={item.unit_label} onChange={(event) => setOrderDraft({ ...orderDraft, items: orderDraft.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_label: event.target.value } : line) })} /></label><label>Preço unitário<input type="number" min="0" step="0.01" required value={item.unit_price} onChange={(event) => setOrderDraft({ ...orderDraft, items: orderDraft.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: event.target.value } : line) })} /></label><button type="button" className="icon-button market-order-remove-item" aria-label={`Remover ${item.kit_name || "item"}`} disabled={orderDraft.items.length === 1} onClick={() => setOrderDraft({ ...orderDraft, items: orderDraft.items.filter((_, lineIndex) => lineIndex !== index) })}><Trash2 size={14} /></button></div>)}</div>
+            <div className="market-order-editor-total"><span>Novo total do pedido</span><strong>{currency(orderDraft.items.reduce((total, item) => total + Math.round((Number(item.quantity) || 0) * (Number(item.unit_price.replace(",", ".")) || 0) * 100) / 100, 0))}</strong></div>
+            {error && <div className="marketplace-admin-error" role="alert"><CircleAlert size={15} /> {error}</div>}
+            <div className="market-order-editor-actions"><button className="admin-secondary-button" type="button" disabled={Boolean(savingOrderId)} onClick={() => { setEditingOrder(null); setOrderDraft(null); }}>Cancelar</button><button className="button button-dark" type="submit" disabled={Boolean(savingOrderId)}>{savingOrderId === editingOrder.id ? <><LoaderCircle className="spin" size={15} /> Salvando...</> : <><Check size={15} /> Salvar pedido</>}</button></div>
+          </form>
         </div>
       )}
 

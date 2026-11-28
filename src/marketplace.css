@@ -1271,6 +1271,29 @@
 .market-cost-comparison strong { color: #3d4c37; }
 .market-cost-modal button { width: 100%; min-height: 40px; margin-top: 16px; border: 0; border-radius: 8px; background: #294536; color: white; font-size: 10px; font-weight: 700; cursor: pointer; }
 
+.marketplace-order-edit { min-height: 29px; margin-top: 7px; padding: 0 8px; font-size: 8px; }
+.market-order-editor { width: min(100%, 860px); max-height: min(92vh, 920px); overflow: auto; padding: 23px; border: 1px solid rgba(255,255,255,.75); border-radius: 16px; background: #fff; box-shadow: 0 22px 65px rgba(10,20,12,.24); }
+.market-order-editor-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 17px; }
+.market-order-editor-heading h2 { margin: 5px 0; color: #323c2e; font: 700 19px "Manrope", sans-serif; }
+.market-order-editor-heading p { max-width: 580px; margin: 0; color: #777d70; font-size: 9px; line-height: 1.6; }
+.market-order-editor-heading .icon-button { flex: 0 0 auto; }
+.market-order-editor-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.market-order-editor-grid label, .market-order-item-edit-row label { min-width: 0; display: flex; flex-direction: column; gap: 5px; color: #62675b; font-size: 8px; font-weight: 700; }
+.market-order-editor-grid input, .market-order-editor-grid select, .market-order-item-edit-row input { width: 100%; min-width: 0; height: 35px; padding: 0 8px; border: 1px solid #e4e6dd; border-radius: 7px; background: #fdfdfa; color: #3e4438; font: 400 10px "DM Sans", sans-serif; }
+.market-order-items-editor-heading { margin: 20px 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.market-order-items-editor-heading > div { display: flex; flex-direction: column; gap: 3px; }
+.market-order-items-editor-heading strong { color: #394536; font: 700 11px "Manrope", sans-serif; }
+.market-order-items-editor-heading small { color: #898d82; font-size: 8px; }
+.market-order-items-editor-heading .admin-secondary-button { min-height: 31px; font-size: 8px; }
+.market-order-items-editor { display: grid; gap: 7px; }
+.market-order-item-edit-row { display: grid; grid-template-columns: minmax(150px, 2fr) minmax(75px, .7fr) minmax(90px, .9fr) minmax(105px, 1fr) 32px; align-items: end; gap: 8px; padding: 9px; border: 1px solid #eceee6; border-radius: 9px; background: #fbfcf8; }
+.market-order-remove-item { margin-bottom: 3px; color: #9d5744; }
+.market-order-editor-total { margin-top: 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; border-radius: 9px; background: #eff3df; color: #5e6d4a; font-size: 9px; }
+.market-order-editor-total strong { color: #334a35; font: 800 16px "Manrope", sans-serif; }
+.market-order-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px; }
+.market-order-editor-actions .button, .market-order-editor-actions .admin-secondary-button { min-height: 38px; font-size: 9px; }
+.market-order-editor-actions .button { display: inline-flex; align-items: center; gap: 7px; }
+
 @media (max-width: 900px) {
   .store-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .store-products-toolbar { align-items: flex-start; flex-direction: column; }
@@ -1279,9 +1302,15 @@
   .marketplace-admin-compact .marketplace-admin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .marketplace-dashboard-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .market-cost-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .market-order-editor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
+  .market-order-editor { max-height: calc(100vh - 20px); padding: 16px; }
+  .market-order-editor-grid { grid-template-columns: 1fr 1fr; }
+  .market-order-item-edit-row { grid-template-columns: 1fr 1fr; }
+  .market-order-item-edit-row label:first-child { grid-column: 1 / -1; }
+  .market-order-remove-item { justify-self: end; }
   .kit-store-section { padding-top: 77px; padding-bottom: 78px; }
   .store-heading { align-items: flex-start; flex-direction: column; gap: 17px; margin-bottom: 25px; }
   .store-heading h2 { font-size: 39px; letter-spacing: -2px; }
